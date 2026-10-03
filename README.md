@@ -102,6 +102,15 @@ examples/          emitters for any service
 | GET | `/api/v1/boards/{id}/render` | Rendered widget payloads |
 | GET | `/api/v1/metrics/summary` | Granular metrics summary |
 
+## Platform features (Datadog surface)
+
+50 tracked features across built-in / extensibility / observability.
+Catalog: `GET /api/v1/features` · stats: `GET /api/v1/features/stats` · matrix: [`docs/FEATURE_MATRIX.md`](docs/FEATURE_MATRIX.md)
+
+```bash
+./scripts/test_features.sh   # smoke every feature endpoint
+```
+
 ## Iterate loop
 
 ```bash

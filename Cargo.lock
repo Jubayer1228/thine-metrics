@@ -1047,6 +1047,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "thine-platform"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "dashmap",
+ "parking_lot",
+ "serde",
+ "serde_json",
+ "thine-common",
+ "thine-storage",
+ "thiserror 1.0.69",
+ "tracing",
+ "uuid",
+]
+
+[[package]]
 name = "thine-server"
 version = "0.1.0"
 dependencies = [
@@ -1060,6 +1076,7 @@ dependencies = [
  "serde_json",
  "thine-common",
  "thine-ingest",
+ "thine-platform",
  "thine-storage",
  "tokio",
  "tokio-stream",

@@ -2,6 +2,7 @@
 
 mod api;
 mod demo;
+mod platform_api;
 mod state;
 
 use anyhow::Result;
@@ -35,7 +36,8 @@ async fn main() -> Result<()> {
     let state = AppState::new();
     if seed_demo {
         demo::seed(&state.store);
-        info!("seeded demo metrics");
+        state.platform.seed_demo();
+        info!("seeded demo metrics + platform modules");
     }
 
     // Background demo generator keeps the UI alive for local demos.
@@ -51,6 +53,7 @@ async fn main() -> Result<()> {
 
     let app = Router::new()
         .merge(api::routes())
+        .merge(platform_api::routes())
         .fallback_service(
             ServeDir::new(&ui_dir).not_found_service(ServeFile::new(index)),
         )

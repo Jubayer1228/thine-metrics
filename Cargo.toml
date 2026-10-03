@@ -4,6 +4,7 @@ members = [
     "crates/thine-common",
     "crates/thine-storage",
     "crates/thine-ingest",
+    "crates/thine-platform",
     "crates/thine-server",
 ]
 default-members = ["crates/thine-server"]
@@ -19,6 +20,7 @@ repository = "https://github.com/Jubayer1228/thine-metrics"
 thine-common = { path = "crates/thine-common" }
 thine-storage = { path = "crates/thine-storage" }
 thine-ingest = { path = "crates/thine-ingest" }
+thine-platform = { path = "crates/thine-platform" }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 anyhow = "1"

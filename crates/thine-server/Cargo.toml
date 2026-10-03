@@ -13,6 +13,7 @@ path = "src/main.rs"
 thine-common = { workspace = true }
 thine-storage = { workspace = true }
 thine-ingest = { workspace = true }
+thine-platform = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 anyhow = { workspace = true }

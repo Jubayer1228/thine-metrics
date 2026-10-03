@@ -1,0 +1,18 @@
+[package]
+name = "thine-platform"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Datadog-parity feature modules for Thine (catalog, SLOs, APM, logs, infra, …)"
+
+[dependencies]
+thine-common = { workspace = true }
+thine-storage = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+chrono = { workspace = true }
+uuid = { workspace = true }
+dashmap = { workspace = true }
+parking_lot = { workspace = true }
+tracing = { workspace = true }
+thiserror = { workspace = true }

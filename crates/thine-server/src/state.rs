@@ -1,11 +1,13 @@
 use std::sync::Arc;
 use thine_ingest::IngestService;
+use thine_platform::PlatformState;
 use thine_storage::{MetricStore, StorageConfig};
 
 #[derive(Clone)]
 pub struct AppState {
     pub store: Arc<MetricStore>,
     pub ingest: Arc<IngestService>,
+    pub platform: Arc<PlatformState>,
 }
 
 impl AppState {
@@ -19,6 +21,11 @@ impl AppState {
             ..StorageConfig::default()
         });
         let ingest = Arc::new(IngestService::new(store.clone()));
-        Self { store, ingest }
+        let platform = PlatformState::new(store.clone());
+        Self {
+            store,
+            ingest,
+            platform,
+        }
     }
 }
