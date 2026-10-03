@@ -72,17 +72,39 @@ struct QueryParams {
     end_ms: Option<i64>,
     step_ms: Option<i64>,
     aggregation: Option<String>,
+    /// Comma-separated tag filters: `service:api,env:prod`
+    #[serde(default)]
+    tags: Option<String>,
     #[serde(default)]
     service: Option<String>,
     #[serde(default)]
     env: Option<String>,
+    /// When set, only return series that have this tag key (for split/group).
+    #[serde(default)]
+    group_by: Option<String>,
+}
+
+fn parse_tag_filters(raw: Option<&str>) -> thine_common::Tags {
+    let mut tags = thine_common::Tags::new();
+    if let Some(s) = raw {
+        for part in s.split(',') {
+            let part = part.trim();
+            if part.is_empty() || part == "*" {
+                continue;
+            }
+            if let Some((k, v)) = part.split_once(':') {
+                tags.insert(k.trim().to_string(), v.trim().to_string());
+            }
+        }
+    }
+    tags
 }
 
 async fn query_get(
     State(state): State<AppState>,
     Query(q): Query<QueryParams>,
 ) -> impl IntoResponse {
-    let mut tags = thine_common::Tags::new();
+    let mut tags = parse_tag_filters(q.tags.as_deref());
     if let Some(s) = q.service {
         tags.insert("service".into(), s);
     }
@@ -106,7 +128,17 @@ async fn query_get(
         aggregation,
     };
     match state.store.query(req) {
-        Ok(r) => (StatusCode::OK, Json(json!({ "results": r }))).into_response(),
+        Ok(mut r) => {
+            if let Some(key) = q.group_by.as_deref().filter(|k| !k.is_empty()) {
+                r.retain(|s| s.tags.contains_key(key) && !s.points.is_empty());
+            } else {
+                let nonempty: Vec<_> = r.iter().filter(|s| !s.points.is_empty()).cloned().collect();
+                if !nonempty.is_empty() {
+                    r = nonempty;
+                }
+            }
+            (StatusCode::OK, Json(json!({ "results": r }))).into_response()
+        }
         Err(e) => (
             StatusCode::BAD_REQUEST,
             Json(json!({ "error": e.to_string() })),

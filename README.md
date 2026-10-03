@@ -22,15 +22,25 @@ Feature-by-feature scorecard: [`docs/COMPARISON.md`](docs/COMPARISON.md) (curren
 
 ```bash
 # prerequisites: Rust 1.89+, Node 20+, curl
-make run
-# open http://localhost:4318
+./scripts/dev.sh
+# open http://localhost:4318  ← Metrics Explorer (Datadog-style UI)
 ```
+
+If the UI shows **Connection failed**, the API isn’t running — use the command above (not a static `file://` open).
 
 Or with Docker:
 
 ```bash
 docker compose up --build
 ```
+
+### UI (Datadog Metrics Explorer parity)
+
+- Left nav: Metrics Explorer · Metrics Summary · Dashboards · Monitors
+- Query editor: `avg:metric{tags} by {tag}` with space aggregation
+- Time ranges: Past 15m / 1h / 4h / 1d · Live / Paused
+- Graph types: line · area · bars · **Split Graph** by tag
+- Multi-series overlay + legend (avg / last per series)
 
 ## Plug in OpenTelemetry
 

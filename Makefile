@@ -10,7 +10,10 @@ ui:
 	cd ui && npm install && npm run build
 
 run: ui
-	THINE_UI_DIR=ui/dist THINE_SEED_DEMO=true cargo run -p thine-server
+	THINE_UI_DIR=ui/dist THINE_SEED_DEMO=true THINE_HOST=127.0.0.1 cargo run -p thine-server
+
+dev:
+	./scripts/dev.sh
 
 score:
 	./scripts/score_loop.sh

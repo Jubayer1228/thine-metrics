@@ -16,8 +16,8 @@ Max score for the tracked surface: **40**.
 | 2 | OpenTelemetry / OTLP | OTLP intake | OTLP/HTTP JSON `/v1/metrics` | 1 | JSON today; protobuf planned |
 | 3 | Language SDKs (Go/Python) | Official DD libs | Thin SDKs + OTEL env wiring | 2 | Any OTEL app can plug in |
 | 4 | StatsD ingest | DogStatsD | `/api/v1/ingest/statsd` | 1 | Line protocol subset |
-| 5 | Metric explorer UI | Rich | Modern explorer with live charts | 2 | Signal-ribbon live UX |
-| 6 | Query + aggregation | Query language | REST query avg/sum/min/max/count/last | 1 | No full QL yet |
+| 5 | Metric explorer UI | Rich | Datadog-style dark explorer + summary/monitors | 2 | Query editor, split graphs, viz toggles |
+| 6 | Query + aggregation | Query language | REST query + tag filters + group_by multi-series | 1 | No full QL / formulas yet |
 | 7 | Tag filtering | Full | Tag match on query/list | 2 | service/env + arbitrary tags |
 | 8 | Dashboards | Drag/drop boards | Live explorer + JSON boards API | 2 | `/api/v1/boards` CRUD; drag/drop UI later |
 | 9 | Alerting | Monitors + notify | Threshold rules + events | 1 | No email/Slack yet |
