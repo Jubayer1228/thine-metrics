@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState, type CSSProperties } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Area,
   AreaChart,
@@ -13,23 +13,20 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
-import { api, type AlertRule, type Dashboard, type MetricMeta, type QueryResult } from "./api";
+import {
+  api,
+  type AlertRule,
+  type BoardMeta,
+  type Dashboard,
+  type MetricMeta,
+  type MetricSummaryRow,
+  type QueryResult,
+  type RenderedBoard,
+} from "./api";
+import { fmt, Sparkline, WidgetCard } from "./widgets";
 import "./App.css";
 
-/** Datadog classic graph palette */
-const SERIES_COLORS = [
-  "#5B91EB",
-  "#A371E3",
-  "#FF6B6B",
-  "#F4A261",
-  "#2EC4B6",
-  "#E9C46A",
-  "#F77FBE",
-  "#4CC9F0",
-  "#80ED99",
-  "#FFD166",
-];
-
+const SERIES_COLORS = ["#5B91EB", "#A371E3", "#FF6B6B", "#F4A261", "#2EC4B6", "#E9C46A", "#F77FBE", "#4CC9F0"];
 const TIME_RANGES = [
   { id: "15m", label: "Past 15 Minutes", ms: 15 * 60_000 },
   { id: "1h", label: "Past 1 Hour", ms: 60 * 60_000 },
@@ -39,24 +36,11 @@ const TIME_RANGES = [
 
 type Page = "explorer" | "summary" | "dashboards" | "monitors";
 type Viz = "line" | "area" | "bars";
-type Layout = "timeseries" | "split";
-
-function fmt(n: number | undefined | null, digits = 2) {
-  if (n == null || Number.isNaN(n)) return "—";
-  if (Math.abs(n) >= 1_000_000) return `${(n / 1_000_000).toFixed(2)}M`;
-  if (Math.abs(n) >= 1000) return n.toLocaleString(undefined, { maximumFractionDigits: 1 });
-  return n.toFixed(digits);
-}
+type LayoutMode = "timeseries" | "split";
 
 function tagStr(tags: Record<string, string>) {
   const pairs = Object.entries(tags).filter(([k]) => !k.startsWith("telemetry."));
-  if (!pairs.length) return "*";
-  return pairs.map(([k, v]) => `${k}:${v}`).join(",");
-}
-
-function seriesKey(r: QueryResult, i: number) {
-  const t = tagStr(r.tags);
-  return t === "*" ? `${r.metric}#${i}` : t;
+  return pairs.length ? pairs.map(([k, v]) => `${k}:${v}`).join(",") : "*";
 }
 
 function stepForRange(ms: number) {
@@ -74,13 +58,26 @@ function timeLabel(ms: number, rangeMs: number) {
   return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });
 }
 
+const tip = {
+  background: "#1C2333",
+  border: "1px solid rgba(255,255,255,0.1)",
+  borderRadius: 6,
+  color: "#E8EDF5",
+  fontSize: 12,
+};
+
 export default function App() {
-  const [page, setPage] = useState<Page>("explorer");
+  const [page, setPage] = useState<Page>("dashboards");
   const [connected, setConnected] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [dash, setDash] = useState<Dashboard | null>(null);
   const [metrics, setMetrics] = useState<MetricMeta[]>([]);
   const [alerts, setAlerts] = useState<AlertRule[]>([]);
+  const [boards, setBoards] = useState<BoardMeta[]>([]);
+  const [rendered, setRendered] = useState<RenderedBoard | null>(null);
+  const [activeBoardId, setActiveBoardId] = useState<string | null>(null);
+  const [summaryRows, setSummaryRows] = useState<MetricSummaryRow[]>([]);
+  const [envFilter, setEnvFilter] = useState("prod");
 
   const [metric, setMetric] = useState("http.server.duration");
   const [agg, setAgg] = useState("avg");
@@ -89,32 +86,55 @@ export default function App() {
   const [rangeId, setRangeId] = useState<(typeof TIME_RANGES)[number]["id"]>("1h");
   const [paused, setPaused] = useState(false);
   const [viz, setViz] = useState<Viz>("line");
-  const [layout, setLayout] = useState<Layout>("timeseries");
+  const [layout, setLayout] = useState<LayoutMode>("timeseries");
   const [series, setSeries] = useState<QueryResult[]>([]);
   const [metricSearch, setMetricSearch] = useState("");
   const [summarySearch, setSummarySearch] = useState("");
+  const [monitorPreview, setMonitorPreview] = useState<QueryResult[]>([]);
 
   const range = TIME_RANGES.find((t) => t.id === rangeId) ?? TIME_RANGES[1];
-
-  const uniqueMetrics = useMemo(
-    () => Array.from(new Set(metrics.map((m) => m.name))).sort(),
-    [metrics],
-  );
+  const uniqueMetrics = useMemo(() => Array.from(new Set(metrics.map((m) => m.name))).sort(), [metrics]);
 
   const refreshMeta = useCallback(async () => {
     try {
       await api.health();
-      const [d, m, a] = await Promise.all([api.dashboard(), api.metrics(), api.alerts()]);
+      const [d, m, a, b] = await Promise.all([
+        api.dashboard(),
+        api.metrics(),
+        api.alerts(),
+        api.boards(),
+      ]);
       setDash(d);
       setMetrics(m);
       setAlerts(a);
+      setBoards(b);
+      if (!activeBoardId && b.length) setActiveBoardId(b[0].id);
       setConnected(true);
       setError(null);
     } catch (e) {
       setConnected(false);
       setError(e instanceof Error ? e.message : "Connection failed");
     }
-  }, []);
+  }, [activeBoardId]);
+
+  const refreshBoard = useCallback(async () => {
+    if (!activeBoardId) return;
+    try {
+      const board = await api.renderBoard(activeBoardId, range.ms, `env:${envFilter}`);
+      setRendered(board);
+      setConnected(true);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Board render failed");
+    }
+  }, [activeBoardId, range.ms, envFilter]);
+
+  const refreshSummary = useCallback(async () => {
+    try {
+      setSummaryRows(await api.metricsSummary(range.ms));
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Summary failed");
+    }
+  }, [range.ms]);
 
   const refreshQuery = useCallback(async () => {
     if (!metric) return;
@@ -128,16 +148,15 @@ export default function App() {
         start_ms: end - range.ms,
         end_ms: end,
         step_ms: stepForRange(range.ms),
-        group_by: layout === "split" || groupBy ? groupBy || undefined : undefined,
+        group_by: groupBy || undefined,
       });
       setSeries(results.filter((r) => r.points.length > 0));
       setConnected(true);
-      setError(null);
     } catch (e) {
       setConnected(false);
       setError(e instanceof Error ? e.message : "Query failed");
     }
-  }, [metric, fromTags, agg, range.ms, groupBy, layout]);
+  }, [metric, fromTags, agg, range.ms, groupBy]);
 
   useEffect(() => {
     refreshMeta();
@@ -146,14 +165,53 @@ export default function App() {
   }, [refreshMeta]);
 
   useEffect(() => {
-    refreshQuery();
-    if (paused) return;
-    const id = setInterval(refreshQuery, 3000);
-    return () => clearInterval(id);
-  }, [refreshQuery, paused]);
+    if (page === "dashboards") {
+      refreshBoard();
+      if (!paused) {
+        const id = setInterval(refreshBoard, 8000);
+        return () => clearInterval(id);
+      }
+    }
+  }, [page, refreshBoard, paused]);
 
-  const keys = series.map((s, i) => seriesKey(s, i));
+  useEffect(() => {
+    if (page === "summary") {
+      refreshSummary();
+      if (!paused) {
+        const id = setInterval(refreshSummary, 5000);
+        return () => clearInterval(id);
+      }
+    }
+  }, [page, refreshSummary, paused]);
 
+  useEffect(() => {
+    if (page === "explorer") {
+      refreshQuery();
+      if (!paused) {
+        const id = setInterval(refreshQuery, 3000);
+        return () => clearInterval(id);
+      }
+    }
+  }, [page, refreshQuery, paused]);
+
+  useEffect(() => {
+    if (page !== "monitors") return;
+    const end = Date.now();
+    api
+      .query({
+        metric,
+        tags: `env:${envFilter}`,
+        aggregation: "avg",
+        start_ms: end - range.ms,
+        end_ms: end,
+        step_ms: stepForRange(range.ms),
+        group_by: "service",
+      })
+      .then((r) => setMonitorPreview(r.filter((s) => s.points.length)))
+      .catch(() => setMonitorPreview([]));
+  }, [page, metric, envFilter, range.ms]);
+
+  const keys = series.map((s, i) => tagStr(s.tags) || `s${i}`);
   const chartData = useMemo(() => {
     const map = new Map<number, Record<string, number | string>>();
     series.forEach((s, i) => {
@@ -167,28 +225,8 @@ export default function App() {
     return Array.from(map.values()).sort((a, b) => Number(a.t) - Number(b.t));
   }, [series, keys, range.ms]);
 
-  const filteredMetricNames = uniqueMetrics.filter((n) =>
-    n.toLowerCase().includes(metricSearch.toLowerCase()),
-  );
-
-  const summaryRows = useMemo(() => {
-    const byName = new Map<string, MetricMeta[]>();
-    for (const m of metrics) {
-      const arr = byName.get(m.name) ?? [];
-      arr.push(m);
-      byName.set(m.name, arr);
-    }
-    return Array.from(byName.entries())
-      .filter(([name]) => name.toLowerCase().includes(summarySearch.toLowerCase()))
-      .map(([name, rows]) => ({
-        name,
-        type: rows[0].metric_type,
-        series: rows.length,
-        last: rows.reduce((max, r) => Math.max(max, r.last_value ?? 0), 0),
-        tags: Array.from(new Set(rows.flatMap((r) => Object.keys(r.tags)))).slice(0, 6),
-      }));
-  }, [metrics, summarySearch]);
-
+  const filteredMetricNames = uniqueMetrics.filter((n) => n.toLowerCase().includes(metricSearch.toLowerCase()));
+  const filteredSummary = summaryRows.filter((r) => r.name.toLowerCase().includes(summarySearch.toLowerCase()));
   const queryPreview = `${agg}:${metric}{${fromTags.trim() || "*"}}${groupBy ? ` by {${groupBy}}` : ""}`;
 
   return (
@@ -204,9 +242,9 @@ export default function App() {
         <nav>
           {(
             [
+              ["dashboards", "Dashboards"],
               ["explorer", "Metrics Explorer"],
               ["summary", "Metrics Summary"],
-              ["dashboards", "Dashboards"],
               ["monitors", "Monitors"],
             ] as const
           ).map(([id, label]) => (
@@ -218,9 +256,7 @@ export default function App() {
         <div className="dd-nav-foot">
           <span className={`dot ${connected ? "ok" : "bad"}`} />
           {connected ? "Connected" : "Disconnected"}
-          <small>
-            {dash ? `${dash.series_count} series · ${fmt(dash.ingest_rate_per_sec, 1)}/s` : "—"}
-          </small>
+          <small>{dash ? `${dash.series_count} series · ${fmt(dash.ingest_rate_per_sec, 1)}/s` : "—"}</small>
         </div>
       </aside>
 
@@ -228,19 +264,35 @@ export default function App() {
         <header className="dd-top">
           <div>
             <h1>
+              {page === "dashboards" && (rendered?.name || "Dashboards")}
               {page === "explorer" && "Metrics Explorer"}
               {page === "summary" && "Metrics Summary"}
-              {page === "dashboards" && "Dashboards"}
               {page === "monitors" && "Monitors"}
             </h1>
             <p className="dd-sub">
+              {page === "dashboards" &&
+                (rendered?.description || "Grid of query values, timeseries, and toplists")}
               {page === "explorer" && "Graph, filter, and split metrics — Datadog-style explorer"}
-              {page === "summary" && "All metrics reported in the retention window"}
-              {page === "dashboards" && "Saved boards from /api/v1/boards"}
-              {page === "monitors" && "Threshold monitors on metric windows"}
+              {page === "summary" && "Granular metric stats with sparklines (min / avg / max / last)"}
+              {page === "monitors" && "Threshold monitors with live metric preview"}
             </p>
           </div>
           <div className="dd-top-actions">
+            {page === "dashboards" && (
+              <>
+                <select value={activeBoardId ?? ""} onChange={(e) => setActiveBoardId(e.target.value)}>
+                  {boards.map((b) => (
+                    <option key={b.id} value={b.id}>
+                      {b.name}
+                    </option>
+                  ))}
+                </select>
+                <select value={envFilter} onChange={(e) => setEnvFilter(e.target.value)}>
+                  <option value="prod">env:prod</option>
+                  <option value="staging">env:staging</option>
+                </select>
+              </>
+            )}
             <select value={rangeId} onChange={(e) => setRangeId(e.target.value as typeof rangeId)}>
               {TIME_RANGES.map((t) => (
                 <option key={t.id} value={t.id}>
@@ -259,8 +311,185 @@ export default function App() {
             <strong>Connection failed</strong>
             <span>{error}</span>
             <code>./scripts/dev.sh</code>
-            <button onClick={() => { refreshMeta(); refreshQuery(); }}>Retry</button>
+            <button onClick={() => { refreshMeta(); refreshBoard(); refreshQuery(); }}>Retry</button>
           </div>
+        )}
+
+        {page === "dashboards" && (
+          <section className="dd-panel dash-panel">
+            <div className="dd-filter-bar">
+              <span>Filter by:</span>
+              <code>env:{envFilter}</code>
+              <span className="muted">
+                {rendered ? `${rendered.widgets.length} widgets · refreshed live` : "Loading…"}
+              </span>
+            </div>
+            <div className="dash-grid">
+              {rendered?.widgets.map((w) => (
+                <WidgetCard key={w.id} w={w} />
+              ))}
+              {!rendered && <div className="dd-empty">Loading dashboard…</div>}
+            </div>
+          </section>
+        )}
+
+        {page === "summary" && (
+          <section className="dd-panel">
+            <div className="dd-toolbar">
+              <input
+                placeholder="Search metrics"
+                value={summarySearch}
+                onChange={(e) => setSummarySearch(e.target.value)}
+              />
+              <span>{filteredSummary.length} metrics</span>
+            </div>
+            <table className="dd-table">
+              <thead>
+                <tr>
+                  <th>Metric Name</th>
+                  <th>Type</th>
+                  <th>Series</th>
+                  <th>Last</th>
+                  <th>Avg</th>
+                  <th>Min</th>
+                  <th>Max</th>
+                  <th>Sparkline</th>
+                  <th>Tag keys</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filteredSummary.map((r) => (
+                  <tr
+                    key={r.name}
+                    onClick={() => {
+                      setMetric(r.name);
+                      setPage("explorer");
+                    }}
+                  >
+                    <td>
+                      <button className="linkish">{r.name}</button>
+                    </td>
+                    <td>{r.metric_type}</td>
+                    <td>{r.series_count}</td>
+                    <td>{fmt(r.last_value)}</td>
+                    <td>{fmt(r.avg)}</td>
+                    <td>{fmt(r.min)}</td>
+                    <td>{fmt(r.max)}</td>
+                    <td className="spark-cell">
+                      <Sparkline points={r.sparkline} />
+                    </td>
+                    <td className="tags">{r.tag_keys.join(", ")}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </section>
+        )}
+
+        {page === "monitors" && (
+          <section className="dd-panel">
+            <div className="monitor-layout">
+              <div className="dd-monitor-form">
+                <h3>New monitor</h3>
+                <p>
+                  Alert when <code>{metric}</code> window average exceeds threshold
+                </p>
+                <MonitorCreate
+                  metric={metric}
+                  metrics={uniqueMetrics}
+                  onMetric={setMetric}
+                  onCreate={async (name, threshold) => {
+                    await api.createAlert({
+                      name,
+                      metric,
+                      threshold,
+                      comparator: "gt",
+                      window_ms: 60_000,
+                      tags: { env: envFilter },
+                    });
+                    await refreshMeta();
+                  }}
+                />
+              </div>
+              <div className="dw timeseries monitor-preview">
+                <div className="dw-title">
+                  Preview · {metric}
+                  <span>threshold monitor context</span>
+                </div>
+                <div className="dw-chart">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <LineChart
+                      data={(() => {
+                        const map = new Map<number, Record<string, number | string>>();
+                        monitorPreview.forEach((s, i) => {
+                          const key = tagStr(s.tags) || `s${i}`;
+                          s.points.forEach((p) => {
+                            const row = map.get(p.timestamp_ms) ?? {
+                              t: p.timestamp_ms,
+                              label: timeLabel(p.timestamp_ms, range.ms),
+                            };
+                            row[key] = p.value;
+                            map.set(p.timestamp_ms, row);
+                          });
+                        });
+                        return Array.from(map.values()).sort((a, b) => Number(a.t) - Number(b.t));
+                      })()}
+                      margin={{ top: 8, right: 8, left: 0, bottom: 0 }}
+                    >
+                      <CartesianGrid stroke="rgba(255,255,255,0.06)" vertical={false} />
+                      <XAxis dataKey="label" tick={{ fill: "#8B97A8", fontSize: 10 }} minTickGap={28} />
+                      <YAxis tick={{ fill: "#8B97A8", fontSize: 10 }} width={42} />
+                      <Tooltip contentStyle={tip} />
+                      {monitorPreview.map((s, i) => (
+                        <Line
+                          key={tagStr(s.tags) || i}
+                          type="monotone"
+                          dataKey={tagStr(s.tags) || `s${i}`}
+                          stroke={SERIES_COLORS[i % SERIES_COLORS.length]}
+                          strokeWidth={2}
+                          dot={false}
+                          isAnimationActive={false}
+                        />
+                      ))}
+                    </LineChart>
+                  </ResponsiveContainer>
+                </div>
+              </div>
+            </div>
+            <table className="dd-table">
+              <thead>
+                <tr>
+                  <th>Name</th>
+                  <th>Metric</th>
+                  <th>Condition</th>
+                  <th>Window</th>
+                  <th>Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                {alerts.map((a) => (
+                  <tr key={a.id}>
+                    <td>{a.name}</td>
+                    <td>
+                      <code>{a.metric}</code>
+                    </td>
+                    <td>
+                      {a.comparator} {a.threshold}
+                    </td>
+                    <td>{a.window_ms / 1000}s</td>
+                    <td>{a.enabled ? "Enabled" : "Muted"}</td>
+                  </tr>
+                ))}
+                {!alerts.length && (
+                  <tr>
+                    <td colSpan={5} className="tags">
+                      No monitors yet
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </section>
         )}
 
         {page === "explorer" && (
@@ -268,7 +497,7 @@ export default function App() {
             <div className="dd-query">
               <div className="dd-query-row">
                 <label>A</label>
-                <select value={agg} onChange={(e) => setAgg(e.target.value)} title="Space aggregation">
+                <select value={agg} onChange={(e) => setAgg(e.target.value)}>
                   <option value="avg">avg by</option>
                   <option value="sum">sum by</option>
                   <option value="min">min by</option>
@@ -276,12 +505,7 @@ export default function App() {
                   <option value="last">last</option>
                 </select>
                 <div className="dd-metric-pick">
-                  <input
-                    list="metric-names"
-                    value={metric}
-                    onChange={(e) => setMetric(e.target.value)}
-                    placeholder="metric.name"
-                  />
+                  <input list="metric-names" value={metric} onChange={(e) => setMetric(e.target.value)} />
                   <datalist id="metric-names">
                     {uniqueMetrics.map((n) => (
                       <option key={n} value={n} />
@@ -289,12 +513,7 @@ export default function App() {
                   </datalist>
                 </div>
                 <span className="dd-from">from</span>
-                <input
-                  className="dd-tags"
-                  value={fromTags}
-                  onChange={(e) => setFromTags(e.target.value)}
-                  placeholder="* or service:api,env:prod"
-                />
+                <input className="dd-tags" value={fromTags} onChange={(e) => setFromTags(e.target.value)} />
                 <span className="dd-from">by</span>
                 <select value={groupBy} onChange={(e) => setGroupBy(e.target.value)}>
                   <option value="">(none)</option>
@@ -329,11 +548,7 @@ export default function App() {
                 />
                 <div className="dd-metric-list">
                   {filteredMetricNames.map((n) => (
-                    <button
-                      key={n}
-                      className={n === metric ? "active" : ""}
-                      onClick={() => setMetric(n)}
-                    >
+                    <button key={n} className={n === metric ? "active" : ""} onClick={() => setMetric(n)}>
                       {n}
                     </button>
                   ))}
@@ -351,7 +566,7 @@ export default function App() {
                     </div>
                     <div className="dd-graph">
                       {chartData.length === 0 ? (
-                        <div className="dd-empty">No data for this query in the selected timeframe.</div>
+                        <div className="dd-empty">No data for this query.</div>
                       ) : (
                         <ResponsiveContainer width="100%" height="100%">
                           {viz === "bars" ? (
@@ -359,7 +574,7 @@ export default function App() {
                               <CartesianGrid stroke="rgba(255,255,255,0.06)" vertical={false} />
                               <XAxis dataKey="label" tick={{ fill: "#8B97A8", fontSize: 11 }} minTickGap={36} />
                               <YAxis tick={{ fill: "#8B97A8", fontSize: 11 }} width={54} />
-                              <Tooltip contentStyle={tooltipStyle} />
+                              <Tooltip contentStyle={tip} />
                               <Legend />
                               {keys.map((k, i) => (
                                 <Bar key={k} dataKey={k} fill={SERIES_COLORS[i % SERIES_COLORS.length]} />
@@ -370,7 +585,7 @@ export default function App() {
                               <CartesianGrid stroke="rgba(255,255,255,0.06)" vertical={false} />
                               <XAxis dataKey="label" tick={{ fill: "#8B97A8", fontSize: 11 }} minTickGap={36} />
                               <YAxis tick={{ fill: "#8B97A8", fontSize: 11 }} width={54} />
-                              <Tooltip contentStyle={tooltipStyle} />
+                              <Tooltip contentStyle={tip} />
                               <Legend />
                               {keys.map((k, i) => (
                                 <Area
@@ -391,7 +606,7 @@ export default function App() {
                               <CartesianGrid stroke="rgba(255,255,255,0.06)" vertical={false} />
                               <XAxis dataKey="label" tick={{ fill: "#8B97A8", fontSize: 11 }} minTickGap={36} />
                               <YAxis tick={{ fill: "#8B97A8", fontSize: 11 }} width={54} />
-                              <Tooltip contentStyle={tooltipStyle} />
+                              <Tooltip contentStyle={tip} />
                               <Legend />
                               {keys.map((k, i) => (
                                 <Line
@@ -412,8 +627,7 @@ export default function App() {
                     <div className="dd-legend-table">
                       {series.map((s, i) => {
                         const last = s.points.at(-1)?.value;
-                        const avg =
-                          s.points.reduce((a, p) => a + p.value, 0) / Math.max(1, s.points.length);
+                        const avg = s.points.reduce((a, p) => a + p.value, 0) / Math.max(1, s.points.length);
                         return (
                           <div key={keys[i]} className="dd-legend-row">
                             <i style={{ background: SERIES_COLORS[i % SERIES_COLORS.length] }} />
@@ -442,10 +656,6 @@ export default function App() {
                           <div className="dd-graph short">
                             <ResponsiveContainer width="100%" height="100%">
                               <LineChart data={data} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
-                                <CartesianGrid stroke="rgba(255,255,255,0.05)" vertical={false} />
-                                <XAxis dataKey="label" hide />
-                                <YAxis tick={{ fill: "#8B97A8", fontSize: 10 }} width={40} />
-                                <Tooltip contentStyle={tooltipStyle} />
                                 <Line
                                   type="monotone"
                                   dataKey="value"
@@ -454,186 +664,49 @@ export default function App() {
                                   dot={false}
                                   isAnimationActive={false}
                                 />
+                                <YAxis tick={{ fill: "#8B97A8", fontSize: 10 }} width={40} />
                               </LineChart>
                             </ResponsiveContainer>
                           </div>
                         </div>
                       );
                     })}
-                    {series.length === 0 && (
-                      <div className="dd-empty">No series to split — widen filters or wait for ingest.</div>
-                    )}
                   </div>
                 )}
               </div>
             </div>
           </section>
         )}
-
-        {page === "summary" && (
-          <section className="dd-panel">
-            <div className="dd-toolbar">
-              <input
-                placeholder="Search metrics"
-                value={summarySearch}
-                onChange={(e) => setSummarySearch(e.target.value)}
-              />
-              <span>{summaryRows.length} metrics</span>
-            </div>
-            <table className="dd-table">
-              <thead>
-                <tr>
-                  <th>Metric Name</th>
-                  <th>Type</th>
-                  <th>Series</th>
-                  <th>Last value</th>
-                  <th>Tag keys</th>
-                </tr>
-              </thead>
-              <tbody>
-                {summaryRows.map((r) => (
-                  <tr key={r.name} onClick={() => { setMetric(r.name); setPage("explorer"); }}>
-                    <td>
-                      <button className="linkish">{r.name}</button>
-                    </td>
-                    <td>{r.type}</td>
-                    <td>{r.series}</td>
-                    <td>{fmt(r.last)}</td>
-                    <td className="tags">{r.tags.join(", ")}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </section>
-        )}
-
-        {page === "dashboards" && <BoardsPage onOpen={(m) => { setMetric(m); setPage("explorer"); }} />}
-
-        {page === "monitors" && (
-          <MonitorsPage
-            alerts={alerts}
-            metric={metric}
-            onCreate={async (name, threshold) => {
-              await api.createAlert({
-                name,
-                metric,
-                threshold,
-                comparator: "gt",
-                window_ms: 60_000,
-              });
-              await refreshMeta();
-            }}
-          />
-        )}
       </div>
     </div>
   );
 }
 
-const tooltipStyle: CSSProperties = {
-  background: "#1C2333",
-  border: "1px solid rgba(255,255,255,0.1)",
-  borderRadius: 6,
-  color: "#E8EDF5",
-  fontSize: 12,
-};
-
-function BoardsPage({ onOpen }: { onOpen: (metric: string) => void }) {
-  const [boards, setBoards] = useState<{ id: string; name: string; widgets: { title: string; metric: string }[] }[]>([]);
-  const [err, setErr] = useState<string | null>(null);
-
-  useEffect(() => {
-    api.boards()
-      .then(setBoards)
-      .catch((e) => setErr(e instanceof Error ? e.message : "failed"));
-  }, []);
-
-  if (err) return <div className="dd-panel"><div className="dd-banner">{err}</div></div>;
-
-  return (
-    <section className="dd-panel">
-      <div className="dd-board-grid">
-        {boards.map((b) => (
-          <article key={b.id} className="dd-board-card">
-            <h3>{b.name}</h3>
-            <ul>
-              {b.widgets.map((w, i) => (
-                <li key={i}>
-                  <button className="linkish" onClick={() => onOpen(w.metric)}>
-                    {w.title}
-                  </button>
-                  <code>{w.metric}</code>
-                </li>
-              ))}
-            </ul>
-          </article>
-        ))}
-        {boards.length === 0 && <div className="dd-empty">No boards yet — demo seed creates “Service health”.</div>}
-      </div>
-    </section>
-  );
-}
-
-function MonitorsPage({
-  alerts,
+function MonitorCreate({
   metric,
+  metrics,
+  onMetric,
   onCreate,
 }: {
-  alerts: AlertRule[];
   metric: string;
+  metrics: string[];
+  onMetric: (m: string) => void;
   onCreate: (name: string, threshold: number) => Promise<void>;
 }) {
   const [name, setName] = useState("High latency");
   const [threshold, setThreshold] = useState("120");
-
   return (
-    <section className="dd-panel">
-      <div className="dd-monitor-form">
-        <h3>New monitor</h3>
-        <p>
-          Alert when <code>{metric}</code> window average exceeds threshold
-        </p>
-        <div className="row">
-          <input value={name} onChange={(e) => setName(e.target.value)} />
-          <input value={threshold} onChange={(e) => setThreshold(e.target.value)} />
-          <button
-            onClick={() => onCreate(name, Number(threshold))}
-          >
-            Create Monitor
-          </button>
-        </div>
-      </div>
-      <table className="dd-table">
-        <thead>
-          <tr>
-            <th>Name</th>
-            <th>Metric</th>
-            <th>Condition</th>
-            <th>Window</th>
-            <th>Status</th>
-          </tr>
-        </thead>
-        <tbody>
-          {alerts.map((a) => (
-            <tr key={a.id}>
-              <td>{a.name}</td>
-              <td><code>{a.metric}</code></td>
-              <td>
-                {a.comparator} {a.threshold}
-              </td>
-              <td>{a.window_ms / 1000}s</td>
-              <td>{a.enabled ? "Enabled" : "Muted"}</td>
-            </tr>
-          ))}
-          {alerts.length === 0 && (
-            <tr>
-              <td colSpan={5} className="tags">
-                No monitors yet
-              </td>
-            </tr>
-          )}
-        </tbody>
-      </table>
-    </section>
+    <div className="row">
+      <select value={metric} onChange={(e) => onMetric(e.target.value)}>
+        {metrics.map((m) => (
+          <option key={m} value={m}>
+            {m}
+          </option>
+        ))}
+      </select>
+      <input value={name} onChange={(e) => setName(e.target.value)} />
+      <input value={threshold} onChange={(e) => setThreshold(e.target.value)} />
+      <button onClick={() => onCreate(name, Number(threshold))}>Create Monitor</button>
+    </div>
   );
 }

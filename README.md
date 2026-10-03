@@ -34,13 +34,21 @@ Or with Docker:
 docker compose up --build
 ```
 
-### UI (Datadog Metrics Explorer parity)
+### UI (Datadog dashboard + explorer parity)
 
-- Left nav: Metrics Explorer · Metrics Summary · Dashboards · Monitors
-- Query editor: `avg:metric{tags} by {tag}` with space aggregation
-- Time ranges: Past 15m / 1h / 4h / 1d · Live / Paused
-- Graph types: line · area · bars · **Split Graph** by tag
-- Multi-series overlay + legend (avg / last per series)
+- **Dashboards** — 12-column screenboard: query value KPIs (with % change + sparkline), timeseries, toplists, section groups
+- **Metrics Explorer** — `avg:metric{tags} by {tag}`, line/area/bars, split graphs
+- **Metrics Summary** — granular min/avg/max/last + sparkline per metric
+- **Monitors** — threshold rules with live preview graph
+- Template filter: `env:prod|staging` · time ranges · Live/Paused
+
+### Dashboard APIs
+
+| Method | Path | Purpose |
+|--------|------|---------|
+| GET | `/api/v1/boards` | List board definitions |
+| GET | `/api/v1/boards/{id}/render?range_ms=&tags=` | Resolve widgets (values, series, toplists) |
+| GET | `/api/v1/metrics/summary?range_ms=` | Granular metric stats + sparklines |
 
 ## Plug in OpenTelemetry
 
@@ -91,6 +99,8 @@ examples/          emitters for any service
 | GET | `/api/v1/dashboard` | Live summary |
 | GET/POST | `/api/v1/alerts` | Threshold monitors |
 | GET/POST | `/api/v1/boards` | Saved dashboard boards |
+| GET | `/api/v1/boards/{id}/render` | Rendered widget payloads |
+| GET | `/api/v1/metrics/summary` | Granular metrics summary |
 
 ## Iterate loop
 

@@ -19,7 +19,7 @@ Max score for the tracked surface: **40**.
 | 5 | Metric explorer UI | Rich | Datadog-style dark explorer + summary/monitors | 2 | Query editor, split graphs, viz toggles |
 | 6 | Query + aggregation | Query language | REST query + tag filters + group_by multi-series | 1 | No full QL / formulas yet |
 | 7 | Tag filtering | Full | Tag match on query/list | 2 | service/env + arbitrary tags |
-| 8 | Dashboards | Drag/drop boards | Live explorer + JSON boards API | 2 | `/api/v1/boards` CRUD; drag/drop UI later |
+| 8 | Dashboards | Drag/drop boards | Screenboard grid: query_value, timeseries, toplist, groups | 2 | `/api/v1/boards/{id}/render` resolves widget data |
 | 9 | Alerting | Monitors + notify | Threshold rules + events | 1 | No email/Slack yet |
 | 10 | Host / service map | Yes | Service tags only | 0 | Not in v0.1 |
 | 11 | APM / traces | Yes | Metrics-only | 0 | Out of scope for v0.1 |

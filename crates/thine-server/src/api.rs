@@ -25,7 +25,9 @@ pub fn routes() -> Router<AppState> {
         .route("/api/v1/alerts/{id}", axum::routing::delete(delete_alert))
         .route("/api/v1/alerts/events", get(alert_events))
         .route("/api/v1/boards", get(list_boards).post(create_board))
-        .route("/api/v1/boards/{id}", axum::routing::delete(delete_board))
+        .route("/api/v1/boards/{id}", get(get_board).delete(delete_board))
+        .route("/api/v1/boards/{id}/render", get(render_board))
+        .route("/api/v1/metrics/summary", get(metrics_summary))
         // OpenTelemetry OTLP/HTTP (JSON) — drop-in for OTEL collectors/SDKs
         .route("/v1/metrics", post(otlp_metrics))
         .route("/otlp/v1/metrics", post(otlp_metrics))
@@ -227,6 +229,17 @@ async fn list_boards(State(state): State<AppState>) -> impl IntoResponse {
     Json(state.store.list_boards())
 }
 
+async fn get_board(State(state): State<AppState>, Path(id): Path<Uuid>) -> impl IntoResponse {
+    match state.store.get_board(id) {
+        Some(b) => Json(b).into_response(),
+        None => (
+            StatusCode::NOT_FOUND,
+            Json(json!({ "error": "board not found" })),
+        )
+            .into_response(),
+    }
+}
+
 async fn create_board(
     State(state): State<AppState>,
     Json(req): Json<CreateBoardRequest>,
@@ -243,5 +256,57 @@ async fn delete_board(State(state): State<AppState>, Path(id): Path<Uuid>) -> im
             Json(json!({ "error": "board not found" })),
         )
             .into_response()
+    }
+}
+
+#[derive(Debug, Deserialize)]
+struct RenderQuery {
+    range_ms: Option<i64>,
+    /// Comma-separated tag filters applied to every widget, e.g. `env:prod`
+    tags: Option<String>,
+}
+
+async fn render_board(
+    State(state): State<AppState>,
+    Path(id): Path<Uuid>,
+    Query(q): Query<RenderQuery>,
+) -> impl IntoResponse {
+    let tags = parse_tag_filters(q.tags.as_deref());
+    let range_ms = q.range_ms.unwrap_or(3_600_000);
+    let store = state.store.clone();
+    let result = tokio::task::spawn_blocking(move || store.render_board(id, range_ms, &tags)).await;
+    match result {
+        Ok(Ok(board)) => Json(board).into_response(),
+        Ok(Err(e)) => (
+            StatusCode::NOT_FOUND,
+            Json(json!({ "error": e.to_string() })),
+        )
+            .into_response(),
+        Err(e) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({ "error": e.to_string() })),
+        )
+            .into_response(),
+    }
+}
+
+#[derive(Debug, Deserialize)]
+struct SummaryQuery {
+    range_ms: Option<i64>,
+}
+
+async fn metrics_summary(
+    State(state): State<AppState>,
+    Query(q): Query<SummaryQuery>,
+) -> impl IntoResponse {
+    let range_ms = q.range_ms.unwrap_or(3_600_000);
+    let store = state.store.clone();
+    match tokio::task::spawn_blocking(move || store.metrics_summary(range_ms)).await {
+        Ok(rows) => Json(rows).into_response(),
+        Err(e) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({ "error": e.to_string() })),
+        )
+            .into_response(),
     }
 }

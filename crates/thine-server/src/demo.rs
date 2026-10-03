@@ -4,10 +4,10 @@ use std::collections::BTreeMap;
 use std::sync::Arc;
 use std::time::Duration;
 use thine_common::{
-    Aggregation, CreateBoardRequest, DashboardWidget, MetricPoint, MetricType, Sample, Tags,
+    Aggregation, CreateAlertRequest, CreateBoardRequest, DashboardWidget, MetricPoint, MetricType,
+    Sample, Tags, WidgetLayout, WidgetType,
 };
 use thine_storage::MetricStore;
-
 pub fn seed(store: &MetricStore) {
     let now = Utc::now().timestamp_millis();
     let services = ["api", "worker", "ingest"];
@@ -66,29 +66,238 @@ pub fn seed(store: &MetricStore) {
         }
     }
 
+    seed_service_overview(store);
+
+    let _ = store.create_alert(CreateAlertRequest {
+        name: "High latency".into(),
+        metric: "http.server.duration".into(),
+        tags: Tags::from([("env".into(), "prod".into())]),
+        threshold: 90.0,
+        comparator: thine_common::Comparator::Gt,
+        window_ms: 60_000,
+        enabled: true,
+    });
+}
+
+fn seed_service_overview(store: &MetricStore) {
+    // Datadog-style screenboard: groups + query values + timeseries + toplist
     let _ = store.create_board(CreateBoardRequest {
-        name: "Service health".into(),
+        name: "Service Overview".into(),
+        description: Some(
+            "Executive service health — query values, timeseries, and toplists (Datadog-style)"
+                .into(),
+        ),
         widgets: vec![
-            DashboardWidget {
-                title: "Latency".into(),
-                metric: "http.server.duration".into(),
-                tags: tags("api", "prod"),
-                aggregation: Aggregation::Avg,
-            },
-            DashboardWidget {
-                title: "CPU".into(),
-                metric: "process.runtime.cpu.utilization".into(),
-                tags: tags("api", "prod"),
-                aggregation: Aggregation::Avg,
-            },
-            DashboardWidget {
-                title: "Memory".into(),
-                metric: "system.memory.usage".into(),
-                tags: tags("api", "prod"),
-                aggregation: Aggregation::Last,
-            },
+            w_group("overview", "Overview", 0, 0, 12, 1),
+            w_qv(
+                "qv-latency",
+                "Avg Latency",
+                "http.server.duration",
+                Aggregation::Avg,
+                Some("ms"),
+                0,
+                1,
+                3,
+                2,
+            ),
+            w_qv(
+                "qv-req",
+                "Request Volume",
+                "http.server.request.count",
+                Aggregation::Avg,
+                Some("req"),
+                3,
+                1,
+                3,
+                2,
+            ),
+            w_qv(
+                "qv-cpu",
+                "CPU Utilization",
+                "process.runtime.cpu.utilization",
+                Aggregation::Avg,
+                Some("%"),
+                6,
+                1,
+                3,
+                2,
+            ),
+            w_qv(
+                "qv-mem",
+                "Memory Usage",
+                "system.memory.usage",
+                Aggregation::Last,
+                Some("MiB"),
+                9,
+                1,
+                3,
+                2,
+            ),
+            w_group("traffic", "Traffic", 0, 3, 12, 1),
+            w_ts(
+                "ts-latency",
+                "Latency by service",
+                "http.server.duration",
+                Aggregation::Avg,
+                Some("service"),
+                Some("line"),
+                Some("ms"),
+                0,
+                4,
+                8,
+                4,
+            ),
+            w_top(
+                "top-latency",
+                "Top services by latency",
+                "http.server.duration",
+                Aggregation::Avg,
+                Some("service"),
+                Some("ms"),
+                8,
+                4,
+                4,
+                4,
+            ),
+            w_group("resources", "Resources", 0, 8, 12, 1),
+            w_ts(
+                "ts-cpu",
+                "CPU by service",
+                "process.runtime.cpu.utilization",
+                Aggregation::Avg,
+                Some("service"),
+                Some("area"),
+                Some("1"),
+                0,
+                9,
+                6,
+                4,
+            ),
+            w_ts(
+                "ts-mem",
+                "Memory by service",
+                "system.memory.usage",
+                Aggregation::Avg,
+                Some("service"),
+                Some("area"),
+                Some("MiB"),
+                6,
+                9,
+                6,
+                4,
+            ),
+            w_ts(
+                "ts-req",
+                "Request count by service",
+                "http.server.request.count",
+                Aggregation::Avg,
+                Some("service"),
+                Some("bars"),
+                Some("1"),
+                0,
+                13,
+                12,
+                4,
+            ),
         ],
     });
+}
+
+fn w_group(id: &str, title: &str, x: u32, y: u32, w: u32, h: u32) -> DashboardWidget {
+    DashboardWidget {
+        id: id.into(),
+        widget_type: WidgetType::Group,
+        title: title.into(),
+        metric: String::new(),
+        tags: Tags::new(),
+        aggregation: Aggregation::Avg,
+        group_by: None,
+        layout: WidgetLayout { x, y, w, h },
+        unit: None,
+        display: None,
+        text: Some(title.into()),
+    }
+}
+
+fn w_qv(
+    id: &str,
+    title: &str,
+    metric: &str,
+    aggregation: Aggregation,
+    unit: Option<&str>,
+    x: u32,
+    y: u32,
+    w: u32,
+    h: u32,
+) -> DashboardWidget {
+    DashboardWidget {
+        id: id.into(),
+        widget_type: WidgetType::QueryValue,
+        title: title.into(),
+        metric: metric.into(),
+        tags: Tags::from([("env".into(), "prod".into())]),
+        aggregation,
+        group_by: None,
+        layout: WidgetLayout { x, y, w, h },
+        unit: unit.map(|s| s.into()),
+        display: None,
+        text: None,
+    }
+}
+
+fn w_ts(
+    id: &str,
+    title: &str,
+    metric: &str,
+    aggregation: Aggregation,
+    group_by: Option<&str>,
+    display: Option<&str>,
+    unit: Option<&str>,
+    x: u32,
+    y: u32,
+    w: u32,
+    h: u32,
+) -> DashboardWidget {
+    DashboardWidget {
+        id: id.into(),
+        widget_type: WidgetType::Timeseries,
+        title: title.into(),
+        metric: metric.into(),
+        tags: Tags::from([("env".into(), "prod".into())]),
+        aggregation,
+        group_by: group_by.map(|s| s.into()),
+        layout: WidgetLayout { x, y, w, h },
+        unit: unit.map(|s| s.into()),
+        display: display.map(|s| s.into()),
+        text: None,
+    }
+}
+
+fn w_top(
+    id: &str,
+    title: &str,
+    metric: &str,
+    aggregation: Aggregation,
+    group_by: Option<&str>,
+    unit: Option<&str>,
+    x: u32,
+    y: u32,
+    w: u32,
+    h: u32,
+) -> DashboardWidget {
+    DashboardWidget {
+        id: id.into(),
+        widget_type: WidgetType::Toplist,
+        title: title.into(),
+        metric: metric.into(),
+        tags: Tags::from([("env".into(), "prod".into())]),
+        aggregation,
+        group_by: group_by.map(|s| s.into()),
+        layout: WidgetLayout { x, y, w, h },
+        unit: unit.map(|s| s.into()),
+        display: None,
+        text: None,
+    }
 }
 
 pub async fn run_live_generator(store: Arc<MetricStore>) {
@@ -128,8 +337,7 @@ pub async fn run_live_generator(store: Arc<MetricStore>) {
                 tags: tags.clone(),
                 sample: Sample {
                     timestamp_ms: now,
-                    value: (0.2 + (tick as f64 / 15.0).sin().abs() * 0.55)
-                        .clamp(0.0, 1.0),
+                    value: (0.2 + (tick as f64 / 15.0).sin().abs() * 0.55).clamp(0.0, 1.0),
                 },
                 unit: Some("1".into()),
                 description: None,

@@ -580,6 +580,235 @@ select {
   font-weight: 600;
 }
 
+/* —— Datadog-style dashboard grid (12 cols) —— */
+.dash-panel {
+  padding-top: 0.75rem;
+}
+
+.dd-filter-bar {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  margin-bottom: 0.75rem;
+  color: var(--dd-muted);
+  font-size: 0.85rem;
+}
+
+.dd-filter-bar code {
+  font-family: var(--dd-mono);
+  background: var(--dd-panel-2);
+  padding: 0.25rem 0.5rem;
+  border-radius: 4px;
+  color: #c4b5fd;
+}
+
+.dd-filter-bar .muted {
+  margin-left: auto;
+  font-family: var(--dd-mono);
+  font-size: 0.72rem;
+}
+
+.dash-grid {
+  display: grid;
+  grid-template-columns: repeat(12, 1fr);
+  grid-auto-rows: 56px;
+  gap: 0.65rem;
+  align-items: stretch;
+}
+
+.dw {
+  background: var(--dd-panel);
+  border: 1px solid var(--dd-border);
+  border-radius: 8px;
+  padding: 0.75rem 0.85rem;
+  min-width: 0;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.dw.group-banner {
+  background: transparent;
+  border: none;
+  border-radius: 0;
+  border-left: 4px solid var(--dd-purple);
+  padding: 0.35rem 0.5rem;
+  justify-content: center;
+}
+
+.dw.group-banner.section-overview {
+  border-left-color: #7c3aed;
+}
+.dw.group-banner.section-traffic {
+  border-left-color: #f4a261;
+}
+.dw.group-banner.section-resources {
+  border-left-color: #5b91eb;
+}
+
+.dw.group-banner h2 {
+  margin: 0;
+  font-size: 0.95rem;
+  letter-spacing: 0.02em;
+}
+
+.dw.group-banner p {
+  margin: 0.15rem 0 0;
+  color: var(--dd-muted);
+  font-size: 0.75rem;
+}
+
+.dw-title {
+  font-size: 0.78rem;
+  color: var(--dd-muted);
+  display: flex;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin-bottom: 0.35rem;
+}
+
+.dw-title span {
+  font-family: var(--dd-mono);
+  font-size: 0.68rem;
+}
+
+.dw.query-value .dw-value {
+  font-size: clamp(1.6rem, 2.4vw, 2.2rem);
+  font-weight: 600;
+  letter-spacing: -0.03em;
+  display: flex;
+  align-items: baseline;
+  gap: 0.35rem;
+  line-height: 1.1;
+}
+
+.dw.query-value .dw-value small {
+  font-size: 0.85rem;
+  color: var(--dd-muted);
+  font-weight: 500;
+}
+
+.dw-change {
+  font-size: 0.75rem;
+  color: var(--dd-muted);
+  margin: 0.25rem 0 0.45rem;
+  font-family: var(--dd-mono);
+}
+
+.dw-change.up {
+  color: var(--dd-ok);
+}
+.dw-change.down {
+  color: #ff6b6b;
+}
+
+.spark {
+  flex: 1;
+  min-height: 48px;
+  margin-top: auto;
+}
+
+.spark.empty {
+  background: rgba(255, 255, 255, 0.03);
+  border-radius: 4px;
+}
+
+.spark-cell {
+  width: 120px;
+  height: 36px;
+  padding: 0.25rem 0.5rem !important;
+}
+
+.spark-cell .spark {
+  height: 32px;
+  min-height: 32px;
+}
+
+.dw.timeseries .dw-chart {
+  flex: 1;
+  min-height: 0;
+  background: #151c28;
+  border-radius: 6px;
+  margin-top: 0.25rem;
+}
+
+.dw.toplist ul {
+  list-style: none;
+  margin: 0.35rem 0 0;
+  padding: 0;
+  display: grid;
+  gap: 0.55rem;
+  overflow: auto;
+}
+
+.dw.toplist li {
+  font-size: 0.8rem;
+}
+
+.dw.toplist .top-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin-bottom: 0.2rem;
+}
+
+.dw.toplist .top-row span {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-family: var(--dd-mono);
+  font-size: 0.72rem;
+}
+
+.dw.toplist .top-row i {
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+}
+
+.dw.toplist .top-bar {
+  height: 6px;
+  background: rgba(255, 255, 255, 0.06);
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.dw.toplist .top-bar b {
+  display: block;
+  height: 100%;
+  border-radius: 3px;
+}
+
+.dw.toplist .muted {
+  color: var(--dd-muted);
+}
+
+.monitor-layout {
+  display: grid;
+  grid-template-columns: 1fr 1.2fr;
+  gap: 0.75rem;
+  margin-bottom: 0.9rem;
+}
+
+.monitor-preview {
+  min-height: 260px;
+}
+
+.monitor-preview .dw-chart {
+  min-height: 200px;
+}
+
+.dd-monitor-form .row {
+  grid-template-columns: 1.2fr 1fr 0.6fr auto;
+}
+
+.dd-monitor-form select {
+  background: var(--dd-panel-2);
+  border: 1px solid var(--dd-border);
+  border-radius: 6px;
+  padding: 0.45rem 0.65rem;
+}
+
 @media (max-width: 980px) {
   .dd {
     grid-template-columns: 1fr;
@@ -602,7 +831,18 @@ select {
 
   .dd-query-row,
   .dd-body,
-  .dd-monitor-form .row {
+  .dd-monitor-form .row,
+  .monitor-layout {
     grid-template-columns: 1fr;
+  }
+
+  .dash-grid {
+    grid-template-columns: 1fr;
+    grid-auto-rows: minmax(120px, auto);
+  }
+
+  .dw {
+    grid-column: 1 / -1 !important;
+    grid-row: auto !important;
   }
 }

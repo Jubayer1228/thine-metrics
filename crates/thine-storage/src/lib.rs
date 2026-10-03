@@ -4,13 +4,14 @@ use chrono::Utc;
 use dashmap::DashMap;
 use parking_lot::RwLock;
 use serde::{Deserialize, Serialize};
-use std::collections::VecDeque;
+use std::collections::{BTreeMap, BTreeSet, VecDeque};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 use thine_common::{
-    series_key, Aggregation, AlertEvent, AlertRule, AlertStatus, Comparator, CreateAlertRequest,
-    CreateBoardRequest, DashboardBoard, DashboardSummary, IngestStats, MetricMeta, MetricPoint,
-    MetricSeries, MetricType, QueryRequest, QueryResult, Sample, Tags, ThineError,
+    series_key, tags_fingerprint, Aggregation, AlertEvent, AlertRule, AlertStatus, Comparator,
+    CreateAlertRequest, CreateBoardRequest, DashboardBoard, DashboardSummary, IngestStats,
+    MetricMeta, MetricPoint, MetricSeries, MetricSummaryRow, MetricType, QueryRequest, QueryResult,
+    RenderedBoard, RenderedWidget, Sample, Tags, ThineError, ToplistItem, WidgetType,
 };
 use tracing::debug;
 use uuid::Uuid;
@@ -108,18 +109,19 @@ impl MetricStore {
         }
 
         let key = series_key(&point.name, &point.tags);
-        let entry = self.series.entry(key).or_insert_with(|| {
-            RwLock::new(SeriesState {
-                name: point.name.clone(),
-                metric_type: point.metric_type,
-                tags: point.tags.clone(),
-                unit: point.unit.clone(),
-                description: point.description.clone(),
-                samples: VecDeque::with_capacity(256),
-            })
-        });
-
         {
+            // Scope DashMap guard so it is dropped before evaluate_alerts
+            // (holding a map Ref across another get/iter deadlocks DashMap).
+            let entry = self.series.entry(key).or_insert_with(|| {
+                RwLock::new(SeriesState {
+                    name: point.name.clone(),
+                    metric_type: point.metric_type,
+                    tags: point.tags.clone(),
+                    unit: point.unit.clone(),
+                    description: point.description.clone(),
+                    samples: VecDeque::with_capacity(256),
+                })
+            });
             let mut state = entry.write();
             if state.unit.is_none() {
                 state.unit = point.unit.clone();
@@ -329,6 +331,7 @@ impl MetricStore {
         let board = DashboardBoard {
             id: Uuid::new_v4(),
             name: req.name,
+            description: req.description,
             widgets: req.widgets,
             created_at: Utc::now(),
         };
@@ -342,8 +345,301 @@ impl MetricStore {
         boards
     }
 
+    pub fn get_board(&self, id: Uuid) -> Option<DashboardBoard> {
+        self.boards.get(&id).map(|e| e.value().clone())
+    }
+
     pub fn delete_board(&self, id: Uuid) -> bool {
         self.boards.remove(&id).is_some()
+    }
+
+    /// Granular Metrics Summary — Datadog Metrics Summary style stats + sparkline.
+    pub fn metrics_summary(&self, range_ms: i64) -> Vec<MetricSummaryRow> {
+        let end = Utc::now().timestamp_millis();
+        let start = end - range_ms.max(60_000);
+        let step = (range_ms / 40).max(5_000);
+
+        let mut by_name: BTreeMap<String, Vec<(MetricType, Option<String>, Tags, Vec<Sample>)>> =
+            BTreeMap::new();
+
+        for entry in self.series.iter() {
+            let state = entry.value().read();
+            let samples: Vec<Sample> = state
+                .samples
+                .iter()
+                .filter(|s| s.timestamp_ms >= start && s.timestamp_ms <= end)
+                .cloned()
+                .collect();
+            by_name.entry(state.name.clone()).or_default().push((
+                state.metric_type,
+                state.unit.clone(),
+                state.tags.clone(),
+                samples,
+            ));
+        }
+
+        let mut rows = Vec::new();
+        for (name, series_list) in by_name {
+            let metric_type = series_list.first().map(|s| s.0).unwrap_or(MetricType::Gauge);
+            let unit = series_list.iter().find_map(|s| s.1.clone());
+            let mut tag_keys = BTreeSet::new();
+            let mut all_values = Vec::new();
+            let mut merged: BTreeMap<i64, Vec<f64>> = BTreeMap::new();
+
+            for (_ty, _unit, tags, samples) in &series_list {
+                for k in tags.keys() {
+                    tag_keys.insert(k.clone());
+                }
+                for s in samples {
+                    all_values.push(s.value);
+                    let bucket = (s.timestamp_ms / step) * step;
+                    merged.entry(bucket).or_default().push(s.value);
+                }
+            }
+
+            let sparkline: Vec<Sample> = merged
+                .into_iter()
+                .map(|(ts, vals)| Sample {
+                    timestamp_ms: ts,
+                    value: vals.iter().sum::<f64>() / vals.len() as f64,
+                })
+                .collect();
+
+            let last_value = sparkline.last().map(|s| s.value);
+            let (avg, min, max) = if all_values.is_empty() {
+                (None, None, None)
+            } else {
+                let sum: f64 = all_values.iter().sum();
+                (
+                    Some(sum / all_values.len() as f64),
+                    Some(all_values.iter().cloned().fold(f64::INFINITY, f64::min)),
+                    Some(all_values.iter().cloned().fold(f64::NEG_INFINITY, f64::max)),
+                )
+            };
+
+            rows.push(MetricSummaryRow {
+                name,
+                metric_type,
+                series_count: series_list.len() as u64,
+                tag_keys: tag_keys.into_iter().collect(),
+                last_value,
+                avg,
+                min,
+                max,
+                unit,
+                sparkline,
+            });
+        }
+        rows
+    }
+
+    /// Render a board with resolved widget data for a live time window.
+    pub fn render_board(
+        &self,
+        id: Uuid,
+        range_ms: i64,
+        filter_tags: &Tags,
+    ) -> Result<RenderedBoard, ThineError> {
+        let board = self
+            .get_board(id)
+            .ok_or_else(|| ThineError::NotFound(id.to_string()))?;
+        let end = Utc::now().timestamp_millis();
+        let start = end - range_ms.max(60_000);
+        let step = ((range_ms / 60).max(5_000)).min(60_000);
+        let prev_end = start;
+        let prev_start = start - range_ms;
+
+        let mut widgets = Vec::new();
+        for w in &board.widgets {
+            let mut tags = w.tags.clone();
+            for (k, v) in filter_tags {
+                tags.insert(k.clone(), v.clone());
+            }
+
+            match w.widget_type {
+                WidgetType::Group | WidgetType::Note => {
+                    widgets.push(RenderedWidget {
+                        id: w.id.clone(),
+                        widget_type: w.widget_type,
+                        title: w.title.clone(),
+                        layout: w.layout.clone(),
+                        unit: w.unit.clone(),
+                        display: w.display.clone(),
+                        text: w.text.clone().or_else(|| Some(w.title.clone())),
+                        value: None,
+                        previous_value: None,
+                        change_pct: None,
+                        sparkline: Vec::new(),
+                        series: Vec::new(),
+                        toplist: Vec::new(),
+                    });
+                }
+                WidgetType::QueryValue => {
+                    let current = self
+                        .query(QueryRequest {
+                            metric: w.metric.clone(),
+                            tags: tags.clone(),
+                            start_ms: Some(start),
+                            end_ms: Some(end),
+                            step_ms: step,
+                            aggregation: w.aggregation,
+                        })
+                        .unwrap_or_default();
+                    let previous = self
+                        .query(QueryRequest {
+                            metric: w.metric.clone(),
+                            tags: tags.clone(),
+                            start_ms: Some(prev_start),
+                            end_ms: Some(prev_end),
+                            step_ms: step,
+                            aggregation: w.aggregation,
+                        })
+                        .unwrap_or_default();
+
+                    let sparkline = merge_series_avg(&current);
+                    let value = sparkline.last().map(|s| s.value).or_else(|| {
+                        current
+                            .iter()
+                            .flat_map(|s| s.points.iter().map(|p| p.value))
+                            .last()
+                    });
+                    let prev_spark = merge_series_avg(&previous);
+                    let previous_value = prev_spark.last().map(|s| s.value);
+                    let change_pct = match (value, previous_value) {
+                        (Some(v), Some(p)) if p.abs() > f64::EPSILON => {
+                            Some(((v - p) / p.abs()) * 100.0)
+                        }
+                        _ => None,
+                    };
+
+                    widgets.push(RenderedWidget {
+                        id: w.id.clone(),
+                        widget_type: WidgetType::QueryValue,
+                        title: w.title.clone(),
+                        layout: w.layout.clone(),
+                        unit: w.unit.clone(),
+                        display: w.display.clone(),
+                        text: None,
+                        value,
+                        previous_value,
+                        change_pct,
+                        sparkline,
+                        series: Vec::new(),
+                        toplist: Vec::new(),
+                    });
+                }
+                WidgetType::Timeseries => {
+                    let mut series = self
+                        .query(QueryRequest {
+                            metric: w.metric.clone(),
+                            tags: tags.clone(),
+                            start_ms: Some(start),
+                            end_ms: Some(end),
+                            step_ms: step,
+                            aggregation: w.aggregation,
+                        })
+                        .unwrap_or_default();
+                    series.retain(|s| !s.points.is_empty());
+                    if let Some(key) = w.group_by.as_deref() {
+                        series.retain(|s| s.tags.contains_key(key));
+                    }
+                    widgets.push(RenderedWidget {
+                        id: w.id.clone(),
+                        widget_type: WidgetType::Timeseries,
+                        title: w.title.clone(),
+                        layout: w.layout.clone(),
+                        unit: w.unit.clone(),
+                        display: w.display.clone(),
+                        text: None,
+                        value: None,
+                        previous_value: None,
+                        change_pct: None,
+                        sparkline: Vec::new(),
+                        series,
+                        toplist: Vec::new(),
+                    });
+                }
+                WidgetType::Toplist => {
+                    let series = self
+                        .query(QueryRequest {
+                            metric: w.metric.clone(),
+                            tags: tags.clone(),
+                            start_ms: Some(start),
+                            end_ms: Some(end),
+                            step_ms: step,
+                            aggregation: w.aggregation,
+                        })
+                        .unwrap_or_default();
+                    let mut items: Vec<ToplistItem> = series
+                        .into_iter()
+                        .filter(|s| !s.points.is_empty())
+                        .map(|s| {
+                            let value = match w.aggregation {
+                                Aggregation::Sum => s.points.iter().map(|p| p.value).sum(),
+                                Aggregation::Max => s
+                                    .points
+                                    .iter()
+                                    .map(|p| p.value)
+                                    .fold(f64::NEG_INFINITY, f64::max),
+                                Aggregation::Min => {
+                                    s.points.iter().map(|p| p.value).fold(f64::INFINITY, f64::min)
+                                }
+                                Aggregation::Last => s.points.last().map(|p| p.value).unwrap_or(0.0),
+                                Aggregation::Count => s.points.len() as f64,
+                                Aggregation::Avg => {
+                                    s.points.iter().map(|p| p.value).sum::<f64>()
+                                        / s.points.len() as f64
+                                }
+                            };
+                            let label = if let Some(key) = w.group_by.as_deref() {
+                                s.tags
+                                    .get(key)
+                                    .cloned()
+                                    .unwrap_or_else(|| tags_fingerprint(&s.tags))
+                            } else {
+                                tags_fingerprint(&s.tags)
+                            };
+                            ToplistItem {
+                                label,
+                                value,
+                                tags: s.tags,
+                            }
+                        })
+                        .collect();
+                    items.sort_by(|a, b| {
+                        b.value
+                            .partial_cmp(&a.value)
+                            .unwrap_or(std::cmp::Ordering::Equal)
+                    });
+                    items.truncate(10);
+                    widgets.push(RenderedWidget {
+                        id: w.id.clone(),
+                        widget_type: WidgetType::Toplist,
+                        title: w.title.clone(),
+                        layout: w.layout.clone(),
+                        unit: w.unit.clone(),
+                        display: w.display.clone(),
+                        text: None,
+                        value: None,
+                        previous_value: None,
+                        change_pct: None,
+                        sparkline: Vec::new(),
+                        series: Vec::new(),
+                        toplist: items,
+                    });
+                }
+            }
+        }
+
+        Ok(RenderedBoard {
+            id: board.id,
+            name: board.name,
+            description: board.description,
+            range_ms,
+            start_ms: start,
+            end_ms: end,
+            widgets,
+        })
     }
 
     fn evaluate_alerts(&self, metric: &str, tags: &Tags) {
@@ -397,6 +693,22 @@ impl FiniteCheck for MetricPoint {
     fn value_is_finite(&self) -> bool {
         self.sample.value.is_finite()
     }
+}
+
+fn merge_series_avg(series: &[QueryResult]) -> Vec<Sample> {
+    let mut buckets: BTreeMap<i64, Vec<f64>> = BTreeMap::new();
+    for s in series {
+        for p in &s.points {
+            buckets.entry(p.timestamp_ms).or_default().push(p.value);
+        }
+    }
+    buckets
+        .into_iter()
+        .map(|(ts, vals)| Sample {
+            timestamp_ms: ts,
+            value: vals.iter().sum::<f64>() / vals.len() as f64,
+        })
+        .collect()
 }
 
 fn tags_match(filter: &Tags, actual: &Tags) -> bool {
