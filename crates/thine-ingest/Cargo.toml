@@ -1,0 +1,16 @@
+[package]
+name = "thine-ingest"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "OTLP and multi-protocol metric ingestion for Thine Metrics"
+
+[dependencies]
+thine-common = { workspace = true }
+thine-storage = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+chrono = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }
+anyhow = { workspace = true }

@@ -1,0 +1,9 @@
+services:
+  thine:
+    build: .
+    ports:
+      - "4318:4318"
+    environment:
+      THINE_SEED_DEMO: "true"
+      THINE_RETENTION_MS: "86400000"
+    restart: unless-stopped

@@ -1,0 +1,17 @@
+/target
+**/target
+ui/node_modules
+ui/dist
+ui/.vite
+.DS_Store
+.env
+.env.*
+*.log
+docs/captures/
+.idea
+.vscode
+__pycache__/
+*.pyc
+.venv/
+sdks/go/thinemetrics/go.sum
+examples/go/go.sum
