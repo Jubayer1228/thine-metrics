@@ -1,6 +1,7 @@
 //! Thine Metrics server — OTLP-ready metrics platform with a modern explorer UI.
 
 mod api;
+mod auth;
 mod demo;
 mod dogstatsd;
 mod fleet_agent;

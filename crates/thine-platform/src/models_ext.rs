@@ -8,6 +8,9 @@ pub struct ApiToken {
     pub user_email: String,
     pub roles: Vec<String>,
     pub created_at_ms: i64,
+    pub org_id: String,
+    pub org_name: String,
+    pub ingest_api_key: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

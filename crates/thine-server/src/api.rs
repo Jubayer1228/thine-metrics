@@ -1,6 +1,7 @@
+use crate::auth::resolve_org;
 use crate::state::AppState;
 use axum::extract::{Path, Query, State};
-use axum::http::StatusCode;
+use axum::http::{HeaderMap, StatusCode};
 use axum::response::IntoResponse;
 use axum::routing::{get, post};
 use axum::{Json, Router};
@@ -80,17 +81,32 @@ struct ListQuery {
     prefix: Option<String>,
 }
 
+fn with_org_tags(ctx: &crate::auth::OrgCtx, mut tags: thine_common::Tags) -> thine_common::Tags {
+    tags.insert("org_id".into(), ctx.org_id.clone());
+    tags
+}
+
 async fn list_metrics(
     State(state): State<AppState>,
+    headers: HeaderMap,
     Query(q): Query<ListQuery>,
 ) -> impl IntoResponse {
-    Json(state.store.list_metrics(q.prefix.as_deref()))
+    let ctx = resolve_org(&state, &headers);
+    let all = state.store.list_metrics(q.prefix.as_deref());
+    let filtered: Vec<_> = all
+        .into_iter()
+        .filter(|m| m.tags.get("org_id").map(String::as_str) == Some(ctx.org_id.as_str()))
+        .collect();
+    Json(filtered)
 }
 
 async fn query_post(
     State(state): State<AppState>,
-    Json(req): Json<QueryRequest>,
+    headers: HeaderMap,
+    Json(mut req): Json<QueryRequest>,
 ) -> impl IntoResponse {
+    let ctx = resolve_org(&state, &headers);
+    req.tags = with_org_tags(&ctx, req.tags);
     match state.store.query(req) {
         Ok(r) => (StatusCode::OK, Json(json!({ "results": r }))).into_response(),
         Err(e) => (
@@ -138,9 +154,11 @@ fn parse_tag_filters(raw: Option<&str>) -> thine_common::Tags {
 
 async fn query_get(
     State(state): State<AppState>,
+    headers: HeaderMap,
     Query(q): Query<QueryParams>,
 ) -> impl IntoResponse {
-    let mut tags = parse_tag_filters(q.tags.as_deref());
+    let ctx = resolve_org(&state, &headers);
+    let mut tags = with_org_tags(&ctx, parse_tag_filters(q.tags.as_deref()));
     if let Some(s) = q.service {
         tags.insert("service".into(), s);
     }
@@ -183,8 +201,16 @@ async fn query_get(
     }
 }
 
-async fn ingest_simple(State(state): State<AppState>, body: axum::body::Bytes) -> impl IntoResponse {
-    match state.ingest.ingest_simple_json(&body) {
+async fn ingest_simple(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    body: axum::body::Bytes,
+) -> impl IntoResponse {
+    let ctx = resolve_org(&state, &headers);
+    match state
+        .ingest
+        .ingest_simple_json_org(&body, Some(&ctx.org_id))
+    {
         Ok(stats) => (StatusCode::OK, Json(stats)).into_response(),
         Err(e) => (
             StatusCode::BAD_REQUEST,
@@ -194,8 +220,17 @@ async fn ingest_simple(State(state): State<AppState>, body: axum::body::Bytes) -
     }
 }
 
-async fn ingest_statsd(State(state): State<AppState>, body: String) -> impl IntoResponse {
-    Json(state.ingest.ingest_statsd_lines(&body))
+async fn ingest_statsd(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    body: String,
+) -> impl IntoResponse {
+    let ctx = resolve_org(&state, &headers);
+    Json(
+        state
+            .ingest
+            .ingest_statsd_lines_org(&body, Some(&ctx.org_id)),
+    )
 }
 
 fn reject_protobuf(headers: &axum::http::HeaderMap) -> Option<axum::response::Response> {
@@ -227,7 +262,11 @@ async fn otlp_metrics(
     if let Some(r) = reject_protobuf(&headers) {
         return r;
     }
-    match state.ingest.ingest_otlp_json(&body) {
+    let ctx = resolve_org(&state, &headers);
+    match state
+        .ingest
+        .ingest_otlp_json_org(&body, Some(&ctx.org_id))
+    {
         Ok(stats) => (
             StatusCode::OK,
             Json(json!({
@@ -255,7 +294,11 @@ async fn otlp_traces(
     if let Some(r) = reject_protobuf(&headers) {
         return r;
     }
-    match state.ingest.ingest_otlp_traces_json(&body) {
+    let ctx = resolve_org(&state, &headers);
+    match state
+        .ingest
+        .ingest_otlp_traces_json_org(&body, Some(&ctx.org_id))
+    {
         Ok(v) => (StatusCode::OK, Json(v)).into_response(),
         Err(e) => (
             StatusCode::BAD_REQUEST,

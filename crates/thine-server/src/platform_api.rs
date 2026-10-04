@@ -1,5 +1,6 @@
 //! Routes for Datadog-parity platform modules.
 
+use crate::auth::{self, resolve_org};
 use crate::state::AppState;
 use axum::extract::ws::{Message, WebSocket, WebSocketUpgrade};
 use axum::extract::{Path, Query, State};
@@ -33,6 +34,15 @@ pub fn routes() -> Router<AppState> {
         .route("/api/v1/rbac/roles", get(list_roles))
         .route("/api/v1/auth/token", post(issue_token))
         .route("/api/v1/auth/me", get(auth_me))
+        .route("/api/v1/auth/signup", post(auth::signup))
+        .route("/api/v1/auth/config", get(auth::oauth_config))
+        .route("/api/v1/auth/oauth/google/start", get(auth::oauth_google_start))
+        .route(
+            "/api/v1/auth/oauth/google/callback",
+            get(auth::oauth_google_callback),
+        )
+        .route("/api/v1/onboarding", get(auth::onboarding))
+        .route("/api/v1/onboarding/advance", post(auth::onboarding_advance))
         .route("/api/v1/incidents", get(list_incidents).post(create_incident))
         .route("/api/v1/incidents/{id}/escalate", post(escalate_incident))
         .route("/api/v1/work", get(list_work))
@@ -230,14 +240,20 @@ async fn features_stats() -> impl IntoResponse {
     Json(feature_stats_with_parity())
 }
 
-async fn list_notebooks(State(s): State<AppState>) -> impl IntoResponse {
-    Json(s.platform.list_notebooks())
+async fn list_notebooks(State(s): State<AppState>, headers: HeaderMap) -> impl IntoResponse {
+    let ctx = resolve_org(&s, &headers);
+    Json(s.platform.list_notebooks_for(&ctx.org_id))
 }
 async fn create_notebook(
     State(s): State<AppState>,
+    headers: HeaderMap,
     Json(req): Json<CreateNotebook>,
 ) -> impl IntoResponse {
-    (StatusCode::CREATED, Json(s.platform.create_notebook(req)))
+    let ctx = resolve_org(&s, &headers);
+    (
+        StatusCode::CREATED,
+        Json(s.platform.create_notebook_for(&ctx.org_id, req)),
+    )
 }
 async fn get_notebook(State(s): State<AppState>, Path(id): Path<uuid::Uuid>) -> impl IntoResponse {
     match s.platform.get_notebook(id) {
@@ -339,7 +355,7 @@ async fn issue_token(
     )
 }
 async fn auth_me(State(s): State<AppState>, headers: HeaderMap) -> impl IntoResponse {
-    match bearer(&headers).and_then(|t| s.platform.authenticate(t)) {
+    match auth::bearer(&headers).and_then(|t| s.platform.authenticate(t)) {
         Some(tok) => Json(tok).into_response(),
         None => (
             StatusCode::UNAUTHORIZED,
@@ -389,8 +405,9 @@ async fn create_slo(State(s): State<AppState>, Json(req): Json<CreateSlo>) -> im
     (StatusCode::CREATED, Json(s.platform.create_slo(req)))
 }
 
-async fn list_catalog(State(s): State<AppState>) -> impl IntoResponse {
-    Json(s.platform.list_catalog())
+async fn list_catalog(State(s): State<AppState>, headers: HeaderMap) -> impl IntoResponse {
+    let ctx = resolve_org(&s, &headers);
+    Json(s.platform.list_catalog_for(&ctx.org_id))
 }
 async fn list_integrations(State(s): State<AppState>) -> impl IntoResponse {
     Json(s.platform.list_integrations())
@@ -580,8 +597,9 @@ async fn ingest_traces(
     let n = s.ingest.ingest_native_spans(intake);
     Json(json!({ "accepted": n, "path": "native", "signal": "traces" }))
 }
-async fn apm_services(State(s): State<AppState>) -> impl IntoResponse {
-    Json(s.platform.list_apm_services())
+async fn apm_services(State(s): State<AppState>, headers: HeaderMap) -> impl IntoResponse {
+    let ctx = resolve_org(&s, &headers);
+    Json(s.platform.list_apm_services_for(&ctx.org_id))
 }
 async fn usm_services(State(s): State<AppState>) -> impl IntoResponse {
     Json(s.platform.usm_services())
@@ -742,8 +760,9 @@ async fn upsert_sds(State(s): State<AppState>, Json(r): Json<SdsRule>) -> impl I
 async fn sds_scan(State(s): State<AppState>) -> impl IntoResponse {
     Json(s.platform.scan_logs_for_sensitive())
 }
-async fn list_fleet(State(s): State<AppState>) -> impl IntoResponse {
-    Json(s.platform.list_fleet())
+async fn list_fleet(State(s): State<AppState>, headers: HeaderMap) -> impl IntoResponse {
+    let ctx = resolve_org(&s, &headers);
+    Json(s.platform.list_fleet_for(&ctx.org_id))
 }
 
 #[derive(Deserialize)]
@@ -756,9 +775,12 @@ struct HeartbeatReq {
 }
 async fn fleet_heartbeat(
     State(s): State<AppState>,
+    headers: HeaderMap,
     Json(req): Json<HeartbeatReq>,
 ) -> impl IntoResponse {
-    Json(s.platform.fleet_heartbeat(
+    let ctx = resolve_org(&s, &headers);
+    Json(s.platform.fleet_heartbeat_for(
+        &ctx.org_id,
         &req.id,
         &req.version,
         &req.host,
@@ -1364,8 +1386,9 @@ async fn kube_container_map(State(s): State<AppState>) -> impl IntoResponse {
     Json(s.platform.kube_container_map())
 }
 
-async fn list_scorecards(State(s): State<AppState>) -> impl IntoResponse {
-    Json(s.platform.list_catalog_scorecards())
+async fn list_scorecards(State(s): State<AppState>, headers: HeaderMap) -> impl IntoResponse {
+    let ctx = resolve_org(&s, &headers);
+    Json(s.platform.list_catalog_scorecards_for(&ctx.org_id))
 }
 
 async fn get_service_scorecard(

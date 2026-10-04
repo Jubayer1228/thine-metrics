@@ -350,14 +350,37 @@ impl IngestService {
 
     // —— Path 2: OpenTelemetry ——
     pub fn ingest_otlp_json(&self, body: &[u8]) -> Result<IngestStats> {
+        self.ingest_otlp_json_org(body, None)
+    }
+
+    pub fn ingest_otlp_json_org(&self, body: &[u8], org_id: Option<&str>) -> Result<IngestStats> {
         let req: OtlpExportRequest =
             serde_json::from_slice(body).map_err(|e| anyhow!("invalid OTLP JSON: {e}"))?;
-        let points = otlp_to_points(req);
+        let mut points = otlp_to_points(req);
+        Self::stamp_org(&mut points, org_id);
         Ok(self.fanout_metrics(points, IngestPath::Otel))
     }
 
+    fn stamp_org_spans(spans: &mut [IntakeSpan], org_id: Option<&str>) {
+        let Some(org) = org_id.filter(|o| !o.is_empty()) else {
+            return;
+        };
+        for s in spans.iter_mut() {
+            s.tags.insert("org_id".into(), org.into());
+        }
+    }
+
     pub fn ingest_otlp_traces_json(&self, body: &[u8]) -> Result<serde_json::Value> {
-        let spans = parse_otlp_traces_json(body)?;
+        self.ingest_otlp_traces_json_org(body, None)
+    }
+
+    pub fn ingest_otlp_traces_json_org(
+        &self,
+        body: &[u8],
+        org_id: Option<&str>,
+    ) -> Result<serde_json::Value> {
+        let mut spans = parse_otlp_traces_json(body)?;
+        Self::stamp_org_spans(&mut spans, org_id);
         let n = self.fanout_spans(spans, IngestPath::Otel);
         Ok(serde_json::json!({
             "partialSuccess": { "rejectedSpans": 0, "errorMessage": "" },
@@ -375,9 +398,22 @@ impl IngestService {
     }
 
     // —— Path 1: Native ——
+    fn stamp_org(points: &mut [MetricPoint], org_id: Option<&str>) {
+        let Some(org) = org_id.filter(|o| !o.is_empty()) else {
+            return;
+        };
+        for p in points.iter_mut() {
+            p.tags.insert("org_id".into(), org.into());
+        }
+    }
+
     pub fn ingest_simple_json(&self, body: &[u8]) -> Result<IngestStats> {
+        self.ingest_simple_json_org(body, None)
+    }
+
+    pub fn ingest_simple_json_org(&self, body: &[u8], org_id: Option<&str>) -> Result<IngestStats> {
         let value: Value = serde_json::from_slice(body)?;
-        let points = if value.get("series").is_some() {
+        let mut points = if value.get("series").is_some() {
             let batch: SimpleBatch = serde_json::from_value(value)?;
             simple_to_points(batch)
         } else if value.is_array() {
@@ -414,10 +450,15 @@ impl IngestService {
         } else {
             return Err(anyhow!("expected series object or point array"));
         };
+        Self::stamp_org(&mut points, org_id);
         Ok(self.fanout_metrics(points, IngestPath::Native))
     }
 
     pub fn ingest_statsd_lines(&self, body: &str) -> IngestStats {
+        self.ingest_statsd_lines_org(body, None)
+    }
+
+    pub fn ingest_statsd_lines_org(&self, body: &str, org_id: Option<&str>) -> IngestStats {
         let mut points = Vec::new();
         let mut events = Vec::new();
         for line in body.lines() {
@@ -440,6 +481,7 @@ impl IngestService {
         if !events.is_empty() {
             self.fanout_events(events);
         }
+        Self::stamp_org(&mut points, org_id);
         self.fanout_metrics(points, IngestPath::Native)
     }
 

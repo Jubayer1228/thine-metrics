@@ -15,6 +15,7 @@ mod logs_query;
 mod models_ext;
 mod obs18;
 mod state;
+mod tenant;
 
 pub use debt_close::{
     default_service_definition_yaml, message_template, KubeMapNode, LogPattern, ScorecardCheck,
@@ -48,6 +49,10 @@ pub use obs18::{
 pub use models_ext::{
     ApiToken, Autoscaler, ByocSink, CostLine, DbQuerySample, DynProbe, IdePlugin, MobileConfig,
     NetworkFlow, SdsFinding, ServerlessFunction,
+};
+pub use tenant::{
+    OnboardingGuide, OnboardingState, OnboardingStep, Organization, TenantHub, TenantUser,
+    DEMO_ORG_ID,
 };
 pub use state::{
     AgentInfo, AuditEvent, CatalogService, ContainerInfo, CostSummary, CreateIncident,

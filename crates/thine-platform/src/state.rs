@@ -10,6 +10,8 @@ use thine_common::{Aggregation, QueryRequest, Tags};
 use thine_storage::MetricStore;
 use uuid::Uuid;
 
+use crate::tenant::{TenantHub, DEMO_ORG_ID};
+
 const MAX_LOGS: usize = 10_000;
 const MAX_SPANS: usize = 5_000;
 const MAX_EVENTS: usize = 5_000;
@@ -92,12 +94,16 @@ pub struct PlatformState {
     pub(crate) ai_eval_results: RwLock<VecDeque<crate::ai_obs::AiEvalResult>>,
     pub(crate) ai_graders: DashMap<String, crate::ai_obs::AiGrader>,
     pub(crate) ai_samples: RwLock<VecDeque<crate::ai_obs::AiHostSample>>,
+    pub tenants: TenantHub,
 }
 
 impl PlatformState {
     pub fn new(metrics: Arc<MetricStore>) -> Arc<Self> {
+        let tenants = TenantHub::new();
+        tenants.ensure_demo_org();
         Arc::new(Self {
             metrics,
+            tenants,
             notebooks: DashMap::new(),
             teams: DashMap::new(),
             users: DashMap::new(),
@@ -198,19 +204,34 @@ impl PlatformState {
 
     // —— Notebooks ——
     pub fn create_notebook(&self, req: CreateNotebook) -> Notebook {
+        self.create_notebook_for(DEMO_ORG_ID, req)
+    }
+
+    pub fn create_notebook_for(&self, org_id: &str, req: CreateNotebook) -> Notebook {
         let nb = Notebook {
             id: Uuid::new_v4(),
             title: req.title,
             cells: req.cells,
             updated_at_ms: Utc::now().timestamp_millis(),
             share_token: None,
+            org_id: org_id.into(),
         };
         self.notebooks.insert(nb.id, nb.clone());
         self.audit("create", &format!("notebook:{}", nb.id), "system");
         nb
     }
+
     pub fn list_notebooks(&self) -> Vec<Notebook> {
-        let mut v: Vec<_> = self.notebooks.iter().map(|e| e.value().clone()).collect();
+        self.list_notebooks_for(DEMO_ORG_ID)
+    }
+
+    pub fn list_notebooks_for(&self, org_id: &str) -> Vec<Notebook> {
+        let mut v: Vec<_> = self
+            .notebooks
+            .iter()
+            .filter(|e| e.value().org_id == org_id)
+            .map(|e| e.value().clone())
+            .collect();
         v.sort_by(|a, b| b.updated_at_ms.cmp(&a.updated_at_ms));
         v
     }
@@ -371,7 +392,15 @@ impl PlatformState {
 
     // —— Catalog / integrations ——
     pub fn list_catalog(&self) -> Vec<CatalogService> {
-        self.catalog.iter().map(|e| e.value().clone()).collect()
+        self.list_catalog_for(DEMO_ORG_ID)
+    }
+
+    pub fn list_catalog_for(&self, org_id: &str) -> Vec<CatalogService> {
+        self.catalog
+            .iter()
+            .filter(|e| e.value().org_id == org_id)
+            .map(|e| e.value().clone())
+            .collect()
     }
     pub fn list_integrations(&self) -> Vec<Integration> {
         self.integrations.iter().map(|e| e.value().clone()).collect()
@@ -444,12 +473,27 @@ impl PlatformState {
         self.spans.read().iter().rev().take(limit).cloned().collect()
     }
     pub fn list_apm_services(&self) -> Vec<String> {
+        self.list_apm_services_for(DEMO_ORG_ID)
+    }
+
+    pub fn list_apm_services_for(&self, org_id: &str) -> Vec<String> {
         let mut set = std::collections::BTreeSet::new();
+        for meta in self.metrics.list_metrics(None) {
+            if meta.tags.get("org_id").map(String::as_str) == Some(org_id) {
+                if let Some(svc) = meta.tags.get("service") {
+                    set.insert(svc.clone());
+                }
+            }
+        }
         for s in self.spans.read().iter() {
-            set.insert(s.service.clone());
+            if s.org_id == org_id {
+                set.insert(s.service.clone());
+            }
         }
         for c in self.catalog.iter() {
-            set.insert(c.key().clone());
+            if c.value().org_id == org_id {
+                set.insert(c.value().name.clone());
+            }
         }
         set.into_iter().collect()
     }
@@ -475,16 +519,24 @@ impl PlatformState {
     pub fn ingest_intake_spans(&self, spans: Vec<thine_common::IntakeSpan>) -> usize {
         let mapped = spans
             .into_iter()
-            .map(|s| SpanRecord {
-                trace_id: s.trace_id,
-                span_id: s.span_id,
-                parent_span_id: s.parent_span_id,
-                service: s.service,
-                name: s.name,
-                duration_ms: s.duration_ms,
-                timestamp_ms: s.timestamp_ms,
-                status: s.status,
-                resource: s.resource,
+            .map(|s| {
+                let org_id = s
+                    .tags
+                    .get("org_id")
+                    .cloned()
+                    .unwrap_or_else(|| DEMO_ORG_ID.into());
+                SpanRecord {
+                    trace_id: s.trace_id,
+                    span_id: s.span_id,
+                    parent_span_id: s.parent_span_id,
+                    service: s.service,
+                    name: s.name,
+                    duration_ms: s.duration_ms,
+                    timestamp_ms: s.timestamp_ms,
+                    status: s.status,
+                    resource: s.resource,
+                    org_id,
+                }
             })
             .collect();
         self.ingest_spans(mapped)
@@ -674,7 +726,15 @@ impl PlatformState {
         self.sds_rules.iter().map(|e| e.value().clone()).collect()
     }
     pub fn list_fleet(&self) -> Vec<FleetAgent> {
-        self.fleet.iter().map(|e| e.value().clone()).collect()
+        self.list_fleet_for(DEMO_ORG_ID)
+    }
+
+    pub fn list_fleet_for(&self, org_id: &str) -> Vec<FleetAgent> {
+        self.fleet
+            .iter()
+            .filter(|e| e.value().org_id == org_id)
+            .map(|e| e.value().clone())
+            .collect()
     }
     pub fn list_policies(&self) -> Vec<(String, serde_json::Value)> {
         self.policies
@@ -723,6 +783,10 @@ impl PlatformState {
     }
 
     pub fn seed_demo(&self) {
+        self.seed_demo_for(DEMO_ORG_ID);
+    }
+
+    pub fn seed_demo_for(&self, org_id: &str) {
         let eng = self.create_team(CreateTeam {
             name: "Platform".into(),
             members: vec!["alice@thine.dev".into(), "bob@thine.dev".into()],
@@ -752,28 +816,32 @@ impl PlatformState {
             },
         );
 
-        self.create_notebook(CreateNotebook {
-            title: "Latency investigation".into(),
-            cells: vec![
-                NotebookCell {
-                    kind: "markdown".into(),
-                    content: "## Latency spikes\nCheck `http.server.duration` by service.".into(),
-                },
-                NotebookCell {
-                    kind: "metric".into(),
-                    content: "avg:http.server.duration{env:prod} by {service}".into(),
-                },
-            ],
-        });
+        self.create_notebook_for(
+            org_id,
+            CreateNotebook {
+                title: "Latency investigation".into(),
+                cells: vec![
+                    NotebookCell {
+                        kind: "markdown".into(),
+                        content: "## Latency spikes\nCheck `http.server.duration` by service.".into(),
+                    },
+                    NotebookCell {
+                        kind: "metric".into(),
+                        content: "avg:http.server.duration{env:prod} by {service}".into(),
+                    },
+                ],
+            },
+        );
 
         for (name, owner) in [("api", &eng.name), ("worker", &eng.name), ("ingest", &eng.name)] {
             self.catalog.insert(
-                name.into(),
+                format!("{org_id}:{name}"),
                 CatalogService {
                     name: name.into(),
                     team: owner.clone(),
                     tier: "critical".into(),
                     languages: vec!["rust".into(), "go".into()],
+                    org_id: org_id.into(),
                     links: BTreeMap::from([
                         ("repo".into(), format!("https://github.com/thine/{name}")),
                         ("runbook".into(), format!("https://runbooks.thine.local/{name}")),
@@ -1006,7 +1074,7 @@ impl PlatformState {
             },
         );
         self.fleet.insert(
-            "agent-1".into(),
+            format!("{org_id}:agent-1"),
             FleetAgent {
                 id: "agent-1".into(),
                 version: "0.1.0".into(),
@@ -1019,6 +1087,7 @@ impl PlatformState {
                 metrics_enabled: true,
                 logs_enabled: true,
                 apm_enabled: true,
+                org_id: org_id.into(),
             },
         );
         *self.network_flows.write() = vec![
@@ -1045,6 +1114,7 @@ impl PlatformState {
                 timestamp_ms: now,
                 status: "ok".into(),
                 resource: None,
+                org_id: org_id.into(),
             },
             SpanRecord {
                 trace_id: "t1".into(),
@@ -1056,6 +1126,7 @@ impl PlatformState {
                 timestamp_ms: now,
                 status: "ok".into(),
                 resource: None,
+                org_id: org_id.into(),
             },
         ]);
         self.ingest_log(LogEvent {
@@ -1174,6 +1245,10 @@ impl PlatformState {
 
 // —— Types ——
 
+fn default_org_id() -> String {
+    DEMO_ORG_ID.into()
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Notebook {
     pub id: Uuid,
@@ -1182,6 +1257,8 @@ pub struct Notebook {
     pub updated_at_ms: i64,
     #[serde(default)]
     pub share_token: Option<String>,
+    #[serde(default = "default_org_id")]
+    pub org_id: String,
 }
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct NotebookCell {
@@ -1305,6 +1382,8 @@ pub struct CatalogService {
     pub lifecycle: Option<String>,
     #[serde(default)]
     pub definition_yaml: Option<String>,
+    #[serde(default = "default_org_id")]
+    pub org_id: String,
 }
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Integration {
@@ -1396,6 +1475,8 @@ pub struct SpanRecord {
     pub status: String,
     #[serde(default)]
     pub resource: Option<String>,
+    #[serde(default = "default_org_id")]
+    pub org_id: String,
 }
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LogEvent {
@@ -1638,6 +1719,8 @@ pub struct FleetAgent {
     pub logs_enabled: bool,
     #[serde(default)]
     pub apm_enabled: bool,
+    #[serde(default = "default_org_id")]
+    pub org_id: String,
 }
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CostSummary {

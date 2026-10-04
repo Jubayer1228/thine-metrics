@@ -869,6 +869,7 @@ impl PlatformState {
                     "postgres" => "SELECT orders".into(),
                     _ => svc.into(),
                 }),
+                org_id: crate::tenant::DEMO_ORG_ID.into(),
             });
         }
         self.ingest_spans(spans);

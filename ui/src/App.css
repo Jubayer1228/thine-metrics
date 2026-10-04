@@ -5398,3 +5398,62 @@ select {
 @media (max-width: 900px) {
   .corr-layout { grid-template-columns: 1fr; }
 }
+
+.get-started .gs-auth-card {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  min-width: 260px;
+  padding: 0.75rem;
+  border: 1px solid var(--surf-border);
+  border-radius: 8px;
+  background: var(--surf-card);
+}
+.get-started .gs-auth-card input {
+  width: 100%;
+  padding: 0.4rem 0.5rem;
+  border-radius: 6px;
+  border: 1px solid var(--surf-border);
+  background: var(--surf-input);
+  color: var(--surf-text);
+}
+.get-started .gs-key-block {
+  margin-top: 1rem;
+  padding: 0.75rem;
+  border-radius: 8px;
+  background: var(--surf-elevated);
+  border: 1px solid var(--surf-border-soft);
+}
+.get-started .gs-key {
+  display: block;
+  margin: 0.5rem 0;
+  padding: 0.5rem;
+  word-break: break-all;
+  font-size: 0.85rem;
+}
+.get-started .gs-curl {
+  font-size: 0.75rem;
+  overflow: auto;
+  white-space: pre-wrap;
+}
+.get-started .gs-onboarding ol li.done strong {
+  color: var(--dd-ok);
+}
+.get-started .gs-cta-row {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  margin-top: 1rem;
+}
+.org-badge {
+  padding: 0.25rem 0.6rem;
+  border-radius: 999px;
+  font-size: 0.8rem;
+  background: var(--surf-active);
+  color: var(--surf-active-text);
+  border: 1px solid var(--surf-active-border);
+}
+.error-text {
+  color: var(--dd-danger);
+  font-size: 0.85rem;
+}

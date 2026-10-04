@@ -1102,6 +1102,7 @@ fn tags(service: &str, env: &str) -> Tags {
     BTreeMap::from([
         ("service".into(), service.into()),
         ("env".into(), env.into()),
+        ("org_id".into(), "org_demo".into()),
         ("telemetry.sdk.language".into(), "rust".into()),
     ])
 }

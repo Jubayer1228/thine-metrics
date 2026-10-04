@@ -246,8 +246,12 @@ impl PlatformState {
     }
 
     pub fn list_catalog_scorecards(&self) -> Vec<ServiceScorecard> {
+        self.list_catalog_scorecards_for(crate::tenant::DEMO_ORG_ID)
+    }
+
+    pub fn list_catalog_scorecards_for(&self, org_id: &str) -> Vec<ServiceScorecard> {
         let mut out: Vec<_> = self
-            .list_catalog()
+            .list_catalog_for(org_id)
             .into_iter()
             .filter_map(|c| self.catalog_scorecard(&c.name))
             .collect();
@@ -259,8 +263,17 @@ impl PlatformState {
         out
     }
 
+    pub fn catalog_key(org_id: &str, name: &str) -> String {
+        format!("{org_id}:{name}")
+    }
+
     pub fn get_service_definition_yaml(&self, name: &str) -> Option<String> {
-        let c = self.catalog.get(name)?;
+        self.get_service_definition_yaml_for(crate::tenant::DEMO_ORG_ID, name)
+    }
+
+    pub fn get_service_definition_yaml_for(&self, org_id: &str, name: &str) -> Option<String> {
+        let key = Self::catalog_key(org_id, name);
+        let c = self.catalog.get(&key)?;
         Some(
             c.definition_yaml
                 .clone()
@@ -269,7 +282,17 @@ impl PlatformState {
     }
 
     pub fn put_service_definition_yaml(&self, name: &str, yaml: String) -> Option<CatalogService> {
-        let mut e = self.catalog.get_mut(name)?;
+        self.put_service_definition_yaml_for(crate::tenant::DEMO_ORG_ID, name, yaml)
+    }
+
+    pub fn put_service_definition_yaml_for(
+        &self,
+        org_id: &str,
+        name: &str,
+        yaml: String,
+    ) -> Option<CatalogService> {
+        let key = Self::catalog_key(org_id, name);
+        let mut e = self.catalog.get_mut(&key)?;
         if !(yaml.contains("dd-service") || yaml.contains("kind:") || yaml.contains("name:")) {
             return None;
         }

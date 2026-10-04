@@ -1,4 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { setAuthHeaderProvider } from "./api";
+import { useAuth } from "./auth";
 import {
   Area,
   AreaChart,
@@ -137,6 +139,11 @@ function timeLabel(ms: number, rangeMs: number) {
 const tip = chartTip;
 
 export default function App() {
+  const { session, authHeaders } = useAuth();
+  useEffect(() => {
+    setAuthHeaderProvider(authHeaders);
+  }, [authHeaders]);
+
   const initialRoute = parseHash();
   const [page, setPageState] = useState<Page>(initialRoute?.page ?? "get-started");
   const [connected, setConnected] = useState(false);
@@ -393,6 +400,11 @@ export default function App() {
             </p>
           </div>
           <div className="dd-top-actions">
+            {session ? (
+              <span className="org-badge" title={session.org_id}>
+                {session.org_name}
+              </span>
+            ) : null}
             <ThemeToggle />
             <button type="button" className="ghost" onClick={() => setPage("get-started")}>
               Get Started

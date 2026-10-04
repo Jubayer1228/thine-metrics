@@ -656,6 +656,7 @@ impl PlatformState {
                 timestamp_ms: now,
                 status: "error".into(),
                 resource: None,
+                org_id: crate::tenant::DEMO_ORG_ID.into(),
             },
             SpanRecord {
                 trace_id: "t-bench".into(),
@@ -667,6 +668,7 @@ impl PlatformState {
                 timestamp_ms: now + 1,
                 status: "ok".into(),
                 resource: None,
+                org_id: crate::tenant::DEMO_ORG_ID.into(),
             },
         ]);
         let _ = self.ingest_flows(vec![NetworkFlow {

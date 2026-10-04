@@ -18,12 +18,27 @@ use thine_common::{MetricPoint, MetricType, Sample, Tags};
 impl PlatformState {
     // —— Auth tokens ——
     pub fn issue_token(&self, email: &str, roles: Vec<String>) -> ApiToken {
+        self.issue_token_for_customer(email, None, roles)
+    }
+
+    pub fn issue_token_for_customer(
+        &self,
+        email: &str,
+        org_name: Option<&str>,
+        roles: Vec<String>,
+    ) -> ApiToken {
+        let (org, _user, ingest_key) = self
+            .tenants
+            .provision_customer(email, org_name, roles.clone());
         let token = format!("thine_{}", Uuid::new_v4().simple());
         let t = ApiToken {
             token: token.clone(),
             user_email: email.into(),
             roles,
             created_at_ms: Utc::now().timestamp_millis(),
+            org_id: org.id.clone(),
+            org_name: org.name.clone(),
+            ingest_api_key: ingest_key,
         };
         self.tokens.insert(token, t.clone());
         self.audit("issue_token", &format!("user:{email}"), email);
@@ -76,8 +91,20 @@ impl PlatformState {
         host: &str,
         platform: Option<&str>,
     ) -> FleetAgent {
+        self.fleet_heartbeat_for(crate::tenant::DEMO_ORG_ID, id, version, host, platform)
+    }
+
+    pub fn fleet_heartbeat_for(
+        &self,
+        org_id: &str,
+        id: &str,
+        version: &str,
+        host: &str,
+        platform: Option<&str>,
+    ) -> FleetAgent {
+        let fleet_key = format!("{org_id}:{id}");
         let now = Utc::now().timestamp_millis();
-        let prev = self.fleet.get(id).map(|e| e.clone());
+        let prev = self.fleet.get(&fleet_key).map(|e| e.clone());
         let agent = FleetAgent {
             id: id.into(),
             version: version.into(),
@@ -99,8 +126,9 @@ impl PlatformState {
             metrics_enabled: prev.as_ref().map(|p| p.metrics_enabled).unwrap_or(true),
             logs_enabled: prev.as_ref().map(|p| p.logs_enabled).unwrap_or(false),
             apm_enabled: prev.as_ref().map(|p| p.apm_enabled).unwrap_or(false),
+            org_id: org_id.into(),
         };
-        self.fleet.insert(id.into(), agent.clone());
+        self.fleet.insert(fleet_key, agent.clone());
         agent
     }
 

@@ -1,5 +1,6 @@
-import { useEffect, useState } from "react";
-import { api, type FleetAgent } from "./api";
+import { useCallback, useEffect, useState } from "react";
+import { api, type OnboardingGuide } from "./api";
+import { useAuth } from "./auth";
 
 type Props = {
   onInstallAgent: () => void;
@@ -7,124 +8,186 @@ type Props = {
 };
 
 export function GetStartedPage({ onInstallAgent, onOpenDashboards }: Props) {
-  const [agents, setAgents] = useState<FleetAgent[]>([]);
-  const [loading, setLoading] = useState(true);
+  const { session, setSession, signOut } = useAuth();
+  const [guide, setGuide] = useState<OnboardingGuide | null>(null);
+  const [demoHint, setDemoHint] = useState<string | null>(null);
+  const [googleEnabled, setGoogleEnabled] = useState(false);
+  const [email, setEmail] = useState("");
+  const [orgName, setOrgName] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  const [agents, setAgents] = useState(0);
 
-  useEffect(() => {
+  const reload = useCallback(() => {
+    api
+      .onboarding()
+      .then((g) => {
+        if (g && "demo" in g && g.demo) {
+          setDemoHint(g.message);
+          setGuide(null);
+        } else {
+          setDemoHint(null);
+          setGuide(g as OnboardingGuide);
+        }
+      })
+      .catch(() => setGuide(null));
     api
       .fleetAgents()
-      .then(setAgents)
-      .catch(() => setAgents([]))
-      .finally(() => setLoading(false));
+      .then((a) => setAgents(a.length))
+      .catch(() => setAgents(0));
   }, []);
 
-  const hasInfra = agents.length > 0;
+  useEffect(() => {
+    api.authConfig().then((c) => setGoogleEnabled(c.google_enabled)).catch(() => undefined);
+    reload();
+  }, [reload, session]);
+
+  const signup = async () => {
+    setBusy(true);
+    setErr(null);
+    try {
+      const { session: s } = await api.authSignup(email.trim(), orgName.trim() || undefined);
+      setSession({
+        token: s.token,
+        user_email: s.user_email,
+        roles: s.roles,
+        org_id: s.org_id,
+        org_name: s.org_name,
+        ingest_api_key: s.ingest_api_key,
+      });
+      reload();
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "Signup failed");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const copyKey = (key: string) => {
+    navigator.clipboard?.writeText(key).catch(() => undefined);
+    if (session) api.onboardingAdvance("api_key").then(() => reload()).catch(() => undefined);
+  };
+
+  const ingestCurl =
+    guide?.ingest_api_key &&
+    `curl -s -X POST ${guide.site_url}/api/v1/ingest \\
+  -H "content-type: application/json" \\
+  -H "DD-API-KEY: ${guide.ingest_api_key}" \\
+  -d '[{"name":"app.requests","value":1,"tags":{"service":"my-app","env":"prod"}}]'`;
 
   return (
     <section className="dd-panel get-started">
       <div className="gs-hero">
         <div>
-          <h2>Welcome — let&apos;s start monitoring your stack</h2>
+          <h2>Get started with your own workspace</h2>
           <p className="muted">
-            Install the Thine Agent to collect real-time CPU, memory, disk, network, logs, and
-            traces — then build dashboards and monitors like the Datadog tutorial flow.
+            Sign in to get an isolated org — metrics, agents, notebooks, and dashboards never mix with
+            other customers or the public demo.
           </p>
         </div>
-        <div className="gs-trial">
-          <span>Local demo workspace</span>
-          <button type="button" className="ghost" onClick={onOpenDashboards}>
-            Open Dashboards
-          </button>
-        </div>
+        {session ? (
+          <div className="gs-trial">
+            <span>
+              {session.org_name} · <code>{session.org_id}</code>
+            </span>
+            <button type="button" className="ghost" onClick={signOut}>
+              Sign out
+            </button>
+          </div>
+        ) : (
+          <div className="gs-auth-card">
+            {googleEnabled ? (
+              <a className="gs-primary" href="/api/v1/auth/oauth/google/start">
+                Continue with Google
+              </a>
+            ) : null}
+            <label>
+              Work email
+              <input
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="you@company.com"
+              />
+            </label>
+            <label>
+              Organization name <span className="muted">(optional)</span>
+              <input
+                value={orgName}
+                onChange={(e) => setOrgName(e.target.value)}
+                placeholder="Acme Corp"
+              />
+            </label>
+            <button type="button" className="gs-primary" disabled={busy || !email.trim()} onClick={signup}>
+              {busy ? "Creating workspace…" : "Create workspace"}
+            </button>
+            {err ? <p className="error-text">{err}</p> : null}
+          </div>
+        )}
       </div>
 
-      <div className={`gs-cta${hasInfra ? " live" : ""}`}>
-        <div>
-          <h3>{loading ? "Checking infrastructure…" : hasInfra ? "Infrastructure detected" : "No Infrastructure Detected"}</h3>
-          <p>
-            {hasInfra
-              ? `${agents.length} agent${agents.length === 1 ? "" : "s"} reporting — you can explore Fleet Automation or jump into dashboards.`
-              : "Install your first agent to monitor hosts with live CPU, memory, disk, and network metrics."}
+      {!session && demoHint ? (
+        <p className="muted gs-demo-hint">{demoHint} You are viewing the shared demo org until you sign in.</p>
+      ) : null}
+
+      {session && guide ? (
+        <div className="gs-steps gs-onboarding">
+          <h3>Onboarding checklist</h3>
+          <ol>
+            {guide.steps.map((step) => (
+              <li key={step.id} className={step.done ? "done" : ""}>
+                <strong>{step.title}</strong>
+                <p className="muted">{step.detail}</p>
+              </li>
+            ))}
+          </ol>
+          <div className="gs-key-block">
+            <h4>Ingest API key</h4>
+            <p className="muted">Send as <code>DD-API-KEY</code> or <code>THINE-API-KEY</code> on every agent and OTLP client.</p>
+            <code className="gs-key">{guide.ingest_api_key}</code>
+            <button type="button" className="ghost" onClick={() => copyKey(guide.ingest_api_key)}>
+              Copy key
+            </button>
+          </div>
+          {ingestCurl ? (
+            <div className="gs-key-block">
+              <h4>Send a test metric</h4>
+              <pre className="gs-curl">{ingestCurl}</pre>
+            </div>
+          ) : null}
+          <div className="gs-cta-row">
+            <button type="button" className="gs-primary" onClick={onInstallAgent}>
+              Install agent →
+            </button>
+            <button type="button" className="ghost" onClick={onOpenDashboards}>
+              Open dashboards
+            </button>
+          </div>
+          <p className="muted">
+            {agents > 0
+              ? `${agents} agent(s) reporting in your org.`
+              : "No agents yet — install one to see live host metrics."}
           </p>
         </div>
-        <button type="button" className="gs-primary" onClick={onInstallAgent}>
-          {hasInfra ? "Manage Agents →" : "Install Your First Agent →"}
-        </button>
-      </div>
-
-      <div className="gs-preview">
-        <header>
-          <strong>{hasInfra ? "Your hosts are live" : "Your first host is live!"}</strong>
-          <span className="muted">Preview of essential host widgets after agent install</span>
-        </header>
-        <div className="gs-preview-grid">
-          <PreviewCard title="CPU usage (%)" kind="area" />
-          <PreviewCard title="Processes memory usage" kind="treemap" />
-          <PreviewCard title="Disk usage by device (%)" kind="line" />
-        </div>
-      </div>
+      ) : null}
 
       <div className="gs-steps">
-        <h3>Tutorial path</h3>
+        <h3>Typical rollout</h3>
         <ol>
           <li>
-            <strong>Install Agent</strong> — Fleet Automation → pick Linux / Docker / Kubernetes
+            <strong>Authenticate</strong> — Google OAuth or email signup provisions org + ingest key
           </li>
           <li>
-            <strong>Create a dashboard</strong> — Timeboard for troubleshooting, Screenboard for status
+            <strong>Instrument</strong> — OTLP/JSON ingest tags all series with your <code>org_id</code>
           </li>
           <li>
-            <strong>Add Essential Widgets</strong> — Timeseries, Query Value, Top List, Golden Signals
+            <strong>Explore</strong> — Metrics Explorer and APM only show data for your org
           </li>
           <li>
-            <strong>Template variables</strong> — one board for every env / service / region
-          </li>
-          <li>
-            <strong>Create monitors</strong> — threshold alerts with recovery + severity routing
+            <strong>Operate</strong> — Dashboards, monitors, notebooks scoped to your workspace
           </li>
         </ol>
       </div>
     </section>
-  );
-}
-
-function PreviewCard({ title, kind }: { title: string; kind: "area" | "treemap" | "line" }) {
-  return (
-    <article className="gs-preview-card">
-      <h4>{title}</h4>
-      <div className={`gs-viz ${kind}`} aria-hidden>
-        {kind === "treemap" ? (
-          <>
-            <div className="tm a">
-              chrome
-              <em>23.07</em>
-            </div>
-            <div className="tm b">
-              kernel
-              <em>22.45</em>
-            </div>
-            <div className="tm c">
-              other
-              <em>18.2</em>
-            </div>
-          </>
-        ) : (
-          <svg viewBox="0 0 200 80" preserveAspectRatio="none">
-            {kind === "area" ? (
-              <>
-                <path d="M0 60 C30 50,50 20,80 35 S140 10,200 28 L200 80 L0 80 Z" fill="rgba(99,44,166,0.25)" />
-                <path d="M0 65 C40 55,70 40,100 48 S160 30,200 42" fill="none" stroke="#e07a3d" strokeWidth="2" />
-                <path d="M0 70 C35 60,75 55,110 50 S155 45,200 38" fill="none" stroke="#632ca6" strokeWidth="2" />
-              </>
-            ) : (
-              <>
-                <path d="M0 55 C40 50,80 30,120 40 S170 20,200 35" fill="none" stroke="#3d8bfd" strokeWidth="2" />
-                <path d="M0 65 C50 60,90 55,130 50 S170 48,200 45" fill="none" stroke="#2ec4b6" strokeWidth="2" />
-              </>
-            )}
-          </svg>
-        )}
-      </div>
-    </article>
   );
 }

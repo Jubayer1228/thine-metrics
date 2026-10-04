@@ -247,10 +247,18 @@ export type MetricSummaryRow = {
   sparkline: Sample[];
 };
 
-async function getJson<T>(path: string): Promise<T> {
+let authHeaderProvider: () => Record<string, string> = () => ({});
+
+/** Called from AuthProvider so all API reads respect the signed-in org. */
+export function setAuthHeaderProvider(fn: () => Record<string, string>) {
+  authHeaderProvider = fn;
+}
+
+async function getJson<T>(path: string, init?: RequestInit): Promise<T> {
   let res: Response;
+  const headers = { ...authHeaderProvider(), ...(init?.headers as Record<string, string> | undefined) };
   try {
-    res = await fetch(path);
+    res = await fetch(path, { ...init, headers });
   } catch {
     throw new Error(
       `Connection failed — is Thine running? Start with: ./scripts/dev.sh (http://localhost:4318)`,
@@ -832,6 +840,29 @@ export const api = {
       `/api/v1/boards/${id}`,
     ),
 
+  authConfig: () =>
+    getJson<{ google_enabled: boolean; signup_enabled: boolean; demo_org_id: string }>(
+      "/api/v1/auth/config",
+    ),
+  authSignup: async (email: string, org_name?: string) => {
+    const res = await fetch("/api/v1/auth/signup", {
+      method: "POST",
+      headers: { "content-type": "application/json", ...authHeaderProvider() },
+      body: JSON.stringify({ email, org_name: org_name || undefined, roles: ["admin"] }),
+    });
+    if (!res.ok) throw new Error(`${res.status} signup failed`);
+    return res.json() as Promise<{ session: AuthSession; onboarding: OnboardingGuide }>;
+  },
+  onboarding: () => getJson<OnboardingGuide | { demo: boolean; message: string }>("/api/v1/onboarding"),
+  onboardingAdvance: async (step: string) => {
+    const res = await fetch("/api/v1/onboarding/advance", {
+      method: "POST",
+      headers: { "content-type": "application/json", ...authHeaderProvider() },
+      body: JSON.stringify({ step }),
+    });
+    if (!res.ok) throw new Error(`${res.status} onboarding advance failed`);
+    return res.json();
+  },
   fleetAgents: () => getJson<FleetAgent[]>("/api/v1/fleet/agents"),
   fleetSummary: () => getJson<FleetSummary>("/api/v1/fleet/summary"),
   fleetHeartbeat: async (body: {
@@ -1921,6 +1952,24 @@ export type BitsReply = {
   citations?: string[];
   actions?: BitsAction[];
   artifacts?: Record<string, unknown> | null;
+};
+
+export type AuthSession = {
+  token: string;
+  user_email: string;
+  roles: string[];
+  org_id: string;
+  org_name: string;
+  ingest_api_key: string;
+};
+
+export type OnboardingGuide = {
+  org_id: string;
+  org_name: string;
+  ingest_api_key: string;
+  site_url: string;
+  onboarding: { step: string; completed: string[] };
+  steps: { id: string; title: string; detail: string; done: boolean }[];
 };
 
 export type WatchdogAnomaly = {
