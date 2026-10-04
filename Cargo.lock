@@ -1043,6 +1043,7 @@ dependencies = [
  "thine-common",
  "thine-storage",
  "thiserror 1.0.69",
+ "tokio",
  "tracing",
 ]
 

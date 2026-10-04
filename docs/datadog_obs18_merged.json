@@ -1,0 +1,69 @@
+{
+  "source": "playwright+llms.txt",
+  "observability_18": [
+    {
+      "id": "cloudcraft",
+      "url": "https://docs.datadoghq.com/datadog_cloudcraft/",
+      "ok": true,
+      "status": 200,
+      "title": "Cloudcraft in Datadog",
+      "h1": "Cloudcraft in Datadog",
+      "headings": [
+        "Overview",
+        "Prerequisites",
+        "Getting started",
+        "Group By",
+        "Saved views",
+        "Explore resources",
+        "Filtering and search",
+        "Search and highlight",
+        "Permissions",
+        "Next steps",
+        "Further reading",
+        "Can't find something?",
+        "How can I help you today?"
+      ],
+      "summary": ""
+    },
+    {
+      "id": "storage",
+      "url": "https://docs.datadoghq.com/infrastructure/storage_management/",
+      "ok": true,
+      "status": 200,
+      "title": "Storage Management",
+      "h1": "Storage Management",
+      "headings": [
+        "Overview",
+        "Can't find something?",
+        "How can I help you today?"
+      ],
+      "summary": ""
+    },
+    {
+      "id": "dsm",
+      "url": "https://docs.datadoghq.com/data_streams_monitoring/",
+      "ok": false,
+      "status": 404,
+      "title": "404 Page not found",
+      "h1": "Arf.",
+      "headings": [
+        "Can't find something?"
+      ],
+      "summary": ""
+    },
+    {
+      "id": "data_obs",
+      "url": "https://docs.datadoghq.com/data_observability_overview/",
+      "ok": false,
+      "status": 404,
+      "title": "404 Page not found",
+      "h1": "Arf.",
+      "headings": [
+        "Can't find something?"
+      ],
+      "summary": ""
+    }
+  ],
+  "ok_count": 2,
+  "total": 4
+}

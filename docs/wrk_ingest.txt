@@ -1,0 +1,13 @@
+Running 5s test @ http://127.0.0.1:4318/api/v1/ingest
+  4 threads and 64 connections
+  Thread Stats   Avg      Stdev     Max   +/- Stdev
+    Latency     0.88ms    0.97ms  51.71ms   94.69%
+    Req/Sec    18.30k     3.55k   38.94k    81.68%
+  Latency Distribution
+     50%  691.00us
+     75%    0.98ms
+     90%    1.43ms
+     99%    4.18ms
+  367879 requests in 5.10s, 98.94MB read
+Requests/sec:  72129.23
+Transfer/sec:     19.40MB

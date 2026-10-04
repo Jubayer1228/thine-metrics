@@ -1,0 +1,168 @@
+{
+  "endpoint": "http://127.0.0.1:4318",
+  "timestamp": "2026-10-03T10:01:07Z",
+  "feature_stats": {
+    "total": 54,
+    "done": 54,
+    "partial": 0,
+    "stub": 0,
+    "planned": 0,
+    "avg_parity_pct": 76.4
+  },
+  "compare_summary": {
+    "avg_parity_pct": 76.4,
+    "thine_competitive_or_better": 45,
+    "datadog_clear_lead": 0,
+    "thine_differentiators": [
+      "Apache-2.0 self-hosted \u2014 data never leaves your VPC",
+      "No per-host / per-custom-metric tax",
+      "Single binary + compose; minutes to first dashboard",
+      "Deterministic Bits analyst over your live store (no SaaS LLM round-trip)",
+      "Predictable infra cost instead of high-water-mark billing",
+      "eBPF-style USM discovery, Watchdog z-score ML, 800+ integration tiles, multi-region HA"
+    ],
+    "datadog_differentiators": [
+      "Battle-tested global SaaS ops at extreme scale",
+      "Kernel-signed eBPF programs across every host OS variant",
+      "Watchdog + Bits LLM trained on massive multi-tenant corpora",
+      "Enterprise support SLAs and compliance certifications"
+    ]
+  },
+  "live": {
+    "series_count": 439,
+    "sample_count": 4383,
+    "ingest_rate_per_sec": 73.05
+  },
+  "load_tests": [
+    {
+      "name": "health_get",
+      "requests": 500,
+      "workers": 32,
+      "errors": 0,
+      "wall_sec": 0.547,
+      "rps": 913.6,
+      "latency_ms": {
+        "p50": 25.44,
+        "p95": 48.53,
+        "p99": 61.86,
+        "avg": 26.95,
+        "max": 66.71
+      }
+    },
+    {
+      "name": "ingest_points",
+      "requests": 2000,
+      "workers": 64,
+      "errors": 0,
+      "wall_sec": 2.021,
+      "rps": 989.8,
+      "latency_ms": {
+        "p50": 57.17,
+        "p95": 96.27,
+        "p99": 114.9,
+        "avg": 57.33,
+        "max": 141.84
+      }
+    },
+    {
+      "name": "query_metric",
+      "requests": 500,
+      "workers": 32,
+      "errors": 0,
+      "wall_sec": 0.496,
+      "rps": 1009.0,
+      "latency_ms": {
+        "p50": 25.63,
+        "p95": 52.49,
+        "p99": 64.49,
+        "avg": 28.02,
+        "max": 85.47
+      }
+    },
+    {
+      "name": "dashboard",
+      "requests": 300,
+      "workers": 16,
+      "errors": 0,
+      "wall_sec": 0.501,
+      "rps": 598.3,
+      "latency_ms": {
+        "p50": 24.0,
+        "p95": 35.83,
+        "p99": 48.13,
+        "avg": 25.67,
+        "max": 88.47
+      }
+    },
+    {
+      "name": "features_stats",
+      "requests": 200,
+      "workers": 16,
+      "errors": 0,
+      "wall_sec": 0.25,
+      "rps": 801.0,
+      "latency_ms": {
+        "p50": 14.64,
+        "p95": 51.94,
+        "p99": 61.54,
+        "avg": 18.1,
+        "max": 66.24
+      }
+    },
+    {
+      "name": "bits_chat",
+      "requests": 100,
+      "workers": 8,
+      "errors": 0,
+      "wall_sec": 0.104,
+      "rps": 961.3,
+      "latency_ms": {
+        "p50": 7.52,
+        "p95": 10.97,
+        "p99": 12.71,
+        "avg": 7.69,
+        "max": 12.73
+      }
+    }
+  ],
+  "sustained_ingest": {
+    "seconds": 5.23,
+    "requests": 5010,
+    "errors": 0,
+    "rps": 957.9
+  },
+  "tco_50_hosts_usd_month": {
+    "assumptions": {
+      "hosts": 50,
+      "datadog_infra_pro_per_host": 15,
+      "datadog_apm_per_host": 31,
+      "custom_metrics": 20000,
+      "log_ingest_gb": 500,
+      "indexed_log_events_millions": 50,
+      "thine_vm_disk": 140
+    },
+    "datadog_estimated": 3185.0,
+    "thine_estimated": 140,
+    "savings_pct": 95.6,
+    "breakdown_datadog": {
+      "infra": 750,
+      "apm": 1550,
+      "custom_metrics_overage": 750.0,
+      "logs": 135.0
+    }
+  },
+  "why_thine": [
+    "Self-hosted Apache-2.0 \u2014 telemetry stays in your VPC",
+    "Est. 96% lower monthly cost at 50-host mid-size footprint",
+    "Ingest sustained ~957.9 req/s on a single local process in this bench",
+    "No per-host or per-custom-metric tax; predictable infra bill",
+    "Feature catalog: 54/54 Done, avg parity 76.4% vs Datadog surfaces",
+    "MCP + Bits over local data \u2014 agentic ops without SaaS round-trips"
+  ],
+  "why_datadog_still": [
+    "Battle-tested global SaaS ops at extreme scale",
+    "Kernel-signed eBPF programs across every host OS variant",
+    "Watchdog + Bits LLM trained on massive multi-tenant corpora",
+    "Enterprise support SLAs and compliance certifications"
+  ]
+}

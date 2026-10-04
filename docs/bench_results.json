@@ -1,0 +1,167 @@
+{
+  "endpoint": "http://127.0.0.1:4318",
+  "timestamp": "2026-10-03T06:21:48Z",
+  "feature_stats": {
+    "total": 50,
+    "done": 50,
+    "partial": 0,
+    "stub": 0,
+    "planned": 0,
+    "avg_parity_pct": 72.2
+  },
+  "compare_summary": {
+    "avg_parity_pct": 72.2,
+    "thine_competitive_or_better": 35,
+    "datadog_clear_lead": 0,
+    "thine_differentiators": [
+      "Apache-2.0 self-hosted \u2014 data never leaves your VPC",
+      "No per-host / per-custom-metric tax",
+      "Single binary + compose; minutes to first dashboard",
+      "Deterministic Bits analyst over your live store (no SaaS LLM round-trip)",
+      "Predictable infra cost instead of high-water-mark billing"
+    ],
+    "datadog_differentiators": [
+      "Global SaaS scale, 800+ integrations, eBPF USM without code",
+      "Mature LLM Bits, Watchdog anomaly ML, security products",
+      "Multi-region HA, long retention, enterprise support SLAs",
+      "Native mobile apps and IDE plugins with deep linking"
+    ]
+  },
+  "live": {
+    "series_count": 24,
+    "sample_count": 1500,
+    "ingest_rate_per_sec": 25.0
+  },
+  "load_tests": [
+    {
+      "name": "health_get",
+      "requests": 500,
+      "workers": 32,
+      "errors": 0,
+      "wall_sec": 0.263,
+      "rps": 1898.4,
+      "latency_ms": {
+        "p50": 13.77,
+        "p95": 23.35,
+        "p99": 29.16,
+        "avg": 14.4,
+        "max": 35.84
+      }
+    },
+    {
+      "name": "ingest_points",
+      "requests": 2000,
+      "workers": 64,
+      "errors": 0,
+      "wall_sec": 1.151,
+      "rps": 1737.6,
+      "latency_ms": {
+        "p50": 32.82,
+        "p95": 51.12,
+        "p99": 62.94,
+        "avg": 32.9,
+        "max": 93.93
+      }
+    },
+    {
+      "name": "query_metric",
+      "requests": 500,
+      "workers": 32,
+      "errors": 0,
+      "wall_sec": 0.254,
+      "rps": 1966.6,
+      "latency_ms": {
+        "p50": 14.33,
+        "p95": 21.73,
+        "p99": 24.72,
+        "avg": 14.32,
+        "max": 27.64
+      }
+    },
+    {
+      "name": "dashboard",
+      "requests": 300,
+      "workers": 16,
+      "errors": 0,
+      "wall_sec": 0.154,
+      "rps": 1943.2,
+      "latency_ms": {
+        "p50": 7.62,
+        "p95": 11.42,
+        "p99": 12.8,
+        "avg": 7.74,
+        "max": 14.69
+      }
+    },
+    {
+      "name": "features_stats",
+      "requests": 200,
+      "workers": 16,
+      "errors": 0,
+      "wall_sec": 0.105,
+      "rps": 1900.9,
+      "latency_ms": {
+        "p50": 7.32,
+        "p95": 12.07,
+        "p99": 13.21,
+        "avg": 7.56,
+        "max": 14.59
+      }
+    },
+    {
+      "name": "bits_chat",
+      "requests": 100,
+      "workers": 8,
+      "errors": 0,
+      "wall_sec": 0.063,
+      "rps": 1594.8,
+      "latency_ms": {
+        "p50": 4.51,
+        "p95": 7.15,
+        "p99": 8.67,
+        "avg": 4.73,
+        "max": 9.18
+      }
+    }
+  ],
+  "sustained_ingest": {
+    "seconds": 5.11,
+    "requests": 8517,
+    "errors": 0,
+    "rps": 1665.3
+  },
+  "tco_50_hosts_usd_month": {
+    "assumptions": {
+      "hosts": 50,
+      "datadog_infra_pro_per_host": 15,
+      "datadog_apm_per_host": 31,
+      "custom_metrics": 20000,
+      "log_ingest_gb": 500,
+      "indexed_log_events_millions": 50,
+      "thine_vm_disk": 140
+    },
+    "datadog_estimated": 3185.0,
+    "thine_estimated": 140,
+    "savings_pct": 95.6,
+    "breakdown_datadog": {
+      "infra": 750,
+      "apm": 1550,
+      "custom_metrics_overage": 750.0,
+      "logs": 135.0
+    }
+  },
+  "why_thine": [
+    "Self-hosted Apache-2.0 \u2014 telemetry stays in your VPC",
+    "Est. 96% lower monthly cost at 50-host mid-size footprint",
+    "Ingest sustained ~1665.3 req/s on a single local process in this bench",
+    "No per-host or per-custom-metric tax; predictable infra bill",
+    "Feature catalog: 50/50 Done, avg parity 72.2% vs Datadog surfaces",
+    "MCP + Bits over local data \u2014 agentic ops without SaaS round-trips"
+  ],
+  "why_datadog_still": [
+    "Global SaaS scale, 800+ integrations, eBPF USM without code",
+    "Mature LLM Bits, Watchdog anomaly ML, security products",
+    "Multi-region HA, long retention, enterprise support SLAs",
+    "Native mobile apps and IDE plugins with deep linking"
+  ]
+}

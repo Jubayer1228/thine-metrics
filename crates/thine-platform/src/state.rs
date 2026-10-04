@@ -12,43 +12,86 @@ use uuid::Uuid;
 
 const MAX_LOGS: usize = 10_000;
 const MAX_SPANS: usize = 5_000;
+const MAX_EVENTS: usize = 5_000;
 const MAX_AUDIT: usize = 2_000;
 
 #[derive(Debug)]
 pub struct PlatformState {
-    metrics: Arc<MetricStore>,
-    notebooks: DashMap<Uuid, Notebook>,
-    teams: DashMap<Uuid, Team>,
-    users: DashMap<Uuid, RbacUser>,
-    roles: DashMap<Uuid, RbacRole>,
-    incidents: DashMap<Uuid, Incident>,
-    workflows: DashMap<Uuid, Workflow>,
-    workflow_runs: RwLock<VecDeque<WorkflowRun>>,
-    slos: DashMap<Uuid, Slo>,
-    catalog: DashMap<String, CatalogService>,
-    integrations: DashMap<String, Integration>,
-    hosts: DashMap<String, HostInfo>,
-    spans: RwLock<VecDeque<SpanRecord>>,
-    logs: RwLock<VecDeque<LogEvent>>,
-    audit: RwLock<VecDeque<AuditEvent>>,
-    work: DashMap<Uuid, WorkItem>,
-    policies: DashMap<String, serde_json::Value>,
-    agents: DashMap<String, AgentInfo>,
-    marketplace: DashMap<String, MarketplaceApp>,
-    pipelines: DashMap<String, Pipeline>,
-    errors: DashMap<String, ErrorGroup>,
-    profiles: DashMap<String, ProfileMeta>,
-    containers: DashMap<String, ContainerInfo>,
-    functions: DashMap<String, serde_json::Value>,
-    volumes: DashMap<String, VolumeInfo>,
-    gpus: DashMap<String, GpuDevice>,
-    streams: DashMap<String, StreamInfo>,
-    db_instances: DashMap<String, DbInstance>,
-    data_assets: DashMap<String, serde_json::Value>,
-    sds_rules: DashMap<String, SdsRule>,
-    fleet: DashMap<String, FleetAgent>,
-    network_flows: RwLock<Vec<serde_json::Value>>,
-    deploys: RwLock<VecDeque<(i64, String)>>,
+    pub(crate) metrics: Arc<MetricStore>,
+    pub(crate) notebooks: DashMap<Uuid, Notebook>,
+    pub(crate) teams: DashMap<Uuid, Team>,
+    pub(crate) users: DashMap<Uuid, RbacUser>,
+    pub(crate) roles: DashMap<Uuid, RbacRole>,
+    pub(crate) incidents: DashMap<Uuid, Incident>,
+    pub(crate) workflows: DashMap<Uuid, Workflow>,
+    pub(crate) workflow_runs: RwLock<VecDeque<WorkflowRun>>,
+    pub(crate) slos: DashMap<Uuid, Slo>,
+    pub(crate) catalog: DashMap<String, CatalogService>,
+    pub(crate) integrations: DashMap<String, Integration>,
+    pub(crate) hosts: DashMap<String, HostInfo>,
+    pub(crate) spans: RwLock<VecDeque<SpanRecord>>,
+    pub(crate) logs: RwLock<VecDeque<LogEvent>>,
+    /// DogStatsD / check events (Husky-adjacent event stream).
+    pub(crate) events: RwLock<VecDeque<PlatformEvent>>,
+    pub(crate) audit: RwLock<VecDeque<AuditEvent>>,
+    pub(crate) work: DashMap<Uuid, WorkItem>,
+    pub(crate) policies: DashMap<String, serde_json::Value>,
+    pub(crate) agents: DashMap<String, AgentInfo>,
+    pub(crate) marketplace: DashMap<String, MarketplaceApp>,
+    pub(crate) pipelines: DashMap<String, Pipeline>,
+    pub(crate) errors: DashMap<String, ErrorGroup>,
+    pub(crate) profiles: DashMap<String, ProfileMeta>,
+    pub(crate) containers: DashMap<String, ContainerInfo>,
+    pub(crate) functions: DashMap<String, serde_json::Value>,
+    pub(crate) volumes: DashMap<String, VolumeInfo>,
+    pub(crate) gpus: DashMap<String, crate::gpu::GpuDevice>,
+    pub(crate) gpu_processes: DashMap<String, crate::gpu::GpuProcess>,
+    pub(crate) gpu_samples: RwLock<VecDeque<crate::gpu::GpuSample>>,
+    pub(crate) streams: DashMap<String, StreamInfo>,
+    pub(crate) db_instances: DashMap<String, DbInstance>,
+    pub(crate) data_assets: DashMap<String, serde_json::Value>,
+    pub(crate) sds_rules: DashMap<String, SdsRule>,
+    pub(crate) fleet: DashMap<String, FleetAgent>,
+    pub(crate) network_flows: RwLock<Vec<serde_json::Value>>,
+    pub(crate) deploys: RwLock<VecDeque<(i64, String)>>,
+    // deep-module stores
+    pub(crate) tokens: DashMap<String, crate::models_ext::ApiToken>,
+    pub(crate) flow_records: RwLock<VecDeque<crate::models_ext::NetworkFlow>>,
+    pub(crate) autoscalers: DashMap<String, crate::models_ext::Autoscaler>,
+    pub(crate) serverless: DashMap<String, crate::models_ext::ServerlessFunction>,
+    pub(crate) profile_blobs: DashMap<String, String>,
+    pub(crate) probes: DashMap<String, crate::models_ext::DynProbe>,
+    pub(crate) db_queries: RwLock<VecDeque<crate::models_ext::DbQuerySample>>,
+    pub(crate) byoc_sinks: DashMap<String, crate::models_ext::ByocSink>,
+    pub(crate) mobile: RwLock<crate::models_ext::MobileConfig>,
+    pub(crate) ide_plugins: DashMap<String, crate::models_ext::IdePlugin>,
+    pub(crate) notif_channels: DashMap<String, crate::close_gap::NotifChannel>,
+    pub(crate) notif_deliveries: RwLock<VecDeque<crate::close_gap::NotifDelivery>>,
+    pub(crate) ebpf_agents: DashMap<String, crate::dd_wins::EbpfAgent>,
+    pub(crate) usm_endpoints: RwLock<Vec<crate::dd_wins::UsmaEndpoint>>,
+    pub(crate) watchdog_anomalies: RwLock<VecDeque<crate::dd_wins::WatchdogAnomaly>>,
+    pub(crate) ha_regions: DashMap<String, crate::dd_wins::HaRegion>,
+    pub(crate) cloud_resources: DashMap<String, crate::obs18::CloudResource>,
+    pub(crate) cloudcraft_views: DashMap<String, crate::obs18::CloudcraftView>,
+    pub(crate) live_processes: DashMap<String, crate::obs18::LiveProcess>,
+    pub(crate) explain_plans: DashMap<String, crate::obs18::ExplainPlan>,
+    pub(crate) db_schemas: DashMap<String, crate::obs18::DbSchemaTable>,
+    pub(crate) data_lineage: DashMap<String, crate::obs18::DataLineageEdge>,
+    pub(crate) db_samples: RwLock<VecDeque<crate::dbm::DbHostSample>>,
+    pub(crate) db_query_metrics: RwLock<Vec<crate::dbm::DbQueryMetric>>,
+    pub(crate) db_wait_events: RwLock<Vec<crate::dbm::DbWaitEvent>>,
+    pub(crate) db_blocking: RwLock<Vec<crate::dbm::DbBlockingQuery>>,
+    pub(crate) db_activity: RwLock<Vec<crate::dbm::DbActivity>>,
+    // AI / LangSmith-parity stores
+    pub(crate) ai_projects: DashMap<String, crate::ai_obs::AiProject>,
+    pub(crate) ai_runs: RwLock<VecDeque<crate::ai_obs::AiRun>>,
+    pub(crate) ai_feedback: RwLock<VecDeque<crate::ai_obs::AiFeedback>>,
+    pub(crate) ai_datasets: DashMap<String, crate::ai_obs::AiDataset>,
+    pub(crate) ai_examples: DashMap<String, crate::ai_obs::AiExample>,
+    pub(crate) ai_experiments: DashMap<String, crate::ai_obs::AiExperiment>,
+    pub(crate) ai_eval_results: RwLock<VecDeque<crate::ai_obs::AiEvalResult>>,
+    pub(crate) ai_graders: DashMap<String, crate::ai_obs::AiGrader>,
+    pub(crate) ai_samples: RwLock<VecDeque<crate::ai_obs::AiHostSample>>,
 }
 
 impl PlatformState {
@@ -68,6 +111,7 @@ impl PlatformState {
             hosts: DashMap::new(),
             spans: RwLock::new(VecDeque::with_capacity(1024)),
             logs: RwLock::new(VecDeque::with_capacity(1024)),
+            events: RwLock::new(VecDeque::with_capacity(512)),
             audit: RwLock::new(VecDeque::with_capacity(256)),
             work: DashMap::new(),
             policies: DashMap::new(),
@@ -80,6 +124,8 @@ impl PlatformState {
             functions: DashMap::new(),
             volumes: DashMap::new(),
             gpus: DashMap::new(),
+            gpu_processes: DashMap::new(),
+            gpu_samples: RwLock::new(VecDeque::new()),
             streams: DashMap::new(),
             db_instances: DashMap::new(),
             data_assets: DashMap::new(),
@@ -87,6 +133,48 @@ impl PlatformState {
             fleet: DashMap::new(),
             network_flows: RwLock::new(Vec::new()),
             deploys: RwLock::new(VecDeque::new()),
+            tokens: DashMap::new(),
+            flow_records: RwLock::new(VecDeque::new()),
+            autoscalers: DashMap::new(),
+            serverless: DashMap::new(),
+            profile_blobs: DashMap::new(),
+            probes: DashMap::new(),
+            db_queries: RwLock::new(VecDeque::new()),
+            byoc_sinks: DashMap::new(),
+            mobile: RwLock::new(crate::models_ext::MobileConfig {
+                app_name: "Thine Mobile".into(),
+                min_ios: "16.0".into(),
+                min_android: "12".into(),
+                push_enabled: false,
+                deep_links: Vec::new(),
+            }),
+            ide_plugins: DashMap::new(),
+            notif_channels: DashMap::new(),
+            notif_deliveries: RwLock::new(VecDeque::new()),
+            ebpf_agents: DashMap::new(),
+            usm_endpoints: RwLock::new(Vec::new()),
+            watchdog_anomalies: RwLock::new(VecDeque::new()),
+            ha_regions: DashMap::new(),
+            cloud_resources: DashMap::new(),
+            cloudcraft_views: DashMap::new(),
+            live_processes: DashMap::new(),
+            explain_plans: DashMap::new(),
+            db_schemas: DashMap::new(),
+            data_lineage: DashMap::new(),
+            db_samples: RwLock::new(VecDeque::new()),
+            db_query_metrics: RwLock::new(Vec::new()),
+            db_wait_events: RwLock::new(Vec::new()),
+            db_blocking: RwLock::new(Vec::new()),
+            db_activity: RwLock::new(Vec::new()),
+            ai_projects: DashMap::new(),
+            ai_runs: RwLock::new(VecDeque::with_capacity(1024)),
+            ai_feedback: RwLock::new(VecDeque::new()),
+            ai_datasets: DashMap::new(),
+            ai_examples: DashMap::new(),
+            ai_experiments: DashMap::new(),
+            ai_eval_results: RwLock::new(VecDeque::new()),
+            ai_graders: DashMap::new(),
+            ai_samples: RwLock::new(VecDeque::new()),
         })
     }
 
@@ -115,6 +203,7 @@ impl PlatformState {
             title: req.title,
             cells: req.cells,
             updated_at_ms: Utc::now().timestamp_millis(),
+            share_token: None,
         };
         self.notebooks.insert(nb.id, nb.clone());
         self.audit("create", &format!("notebook:{}", nb.id), "system");
@@ -124,6 +213,31 @@ impl PlatformState {
         let mut v: Vec<_> = self.notebooks.iter().map(|e| e.value().clone()).collect();
         v.sort_by(|a, b| b.updated_at_ms.cmp(&a.updated_at_ms));
         v
+    }
+
+    pub fn get_notebook(&self, id: Uuid) -> Option<Notebook> {
+        self.notebooks.get(&id).map(|e| e.value().clone())
+    }
+
+    pub fn update_notebook(&self, id: Uuid, title: Option<String>, cells: Option<Vec<NotebookCell>>) -> Option<Notebook> {
+        let mut entry = self.notebooks.get_mut(&id)?;
+        if let Some(t) = title {
+            entry.title = t;
+        }
+        if let Some(c) = cells {
+            entry.cells = c;
+        }
+        entry.updated_at_ms = Utc::now().timestamp_millis();
+        self.audit("update", &format!("notebook:{id}"), "system");
+        Some(entry.clone())
+    }
+
+    pub fn delete_notebook(&self, id: Uuid) -> bool {
+        let ok = self.notebooks.remove(&id).is_some();
+        if ok {
+            self.audit("delete", &format!("notebook:{id}"), "system");
+        }
+        ok
     }
 
     // —— Teams / RBAC ——
@@ -275,21 +389,29 @@ impl PlatformState {
     pub fn list_containers(&self) -> Vec<ContainerInfo> {
         self.containers.iter().map(|e| e.value().clone()).collect()
     }
-    pub fn list_gpus(&self) -> Vec<GpuDevice> {
+    pub fn list_gpus(&self) -> Vec<crate::gpu::GpuDevice> {
         self.gpus.iter().map(|e| e.value().clone()).collect()
     }
     pub fn list_volumes(&self) -> Vec<VolumeInfo> {
         self.volumes.iter().map(|e| e.value().clone()).collect()
     }
     pub fn list_functions(&self) -> Vec<serde_json::Value> {
+        let detailed = self.list_serverless_detailed();
+        if !detailed.is_empty() {
+            return detailed
+                .into_iter()
+                .map(|f| serde_json::to_value(f).unwrap_or_default())
+                .collect();
+        }
         self.functions.iter().map(|e| e.value().clone()).collect()
     }
     pub fn cost_summary(&self) -> CostSummary {
+        let lines = self.cost_detail();
         let mut by_service = BTreeMap::new();
-        for svc in self.catalog.iter() {
-            by_service.insert(svc.key().clone(), 120.0 + (svc.key().len() as f64) * 17.5);
+        for line in &lines {
+            by_service.insert(line.service.clone(), line.total);
         }
-        let total: f64 = by_service.values().sum();
+        let total: f64 = lines.iter().map(|l| l.total).sum();
         CostSummary {
             currency: "USD".into(),
             total_month: total,
@@ -300,15 +422,10 @@ impl PlatformState {
         self.network_flows.read().clone()
     }
     pub fn list_autoscalers(&self) -> Vec<serde_json::Value> {
-        vec![serde_json::json!({
-            "name": "api-hpa",
-            "namespace": "default",
-            "min": 2,
-            "max": 20,
-            "current": 4,
-            "recommended": 5,
-            "metric": "cpu"
-        })]
+        self.recommend_autoscalers()
+            .into_iter()
+            .map(|a| serde_json::to_value(a).unwrap_or_default())
+            .collect()
     }
 
     // —— APM ——
@@ -337,10 +454,77 @@ impl PlatformState {
         set.into_iter().collect()
     }
     pub fn usm_services(&self) -> Vec<serde_json::Value> {
-        self.list_apm_services()
+        let map = self.usm_map();
+        map.get("services")
+            .and_then(|s| s.as_array())
+            .cloned()
+            .unwrap_or_default()
             .into_iter()
-            .map(|s| serde_json::json!({"service": s, "protocol": "http", "detected": true}))
+            .map(|s| {
+                serde_json::json!({
+                    "service": s,
+                    "protocol": "http",
+                    "detected": true,
+                    "map": "see /api/v1/usm/map"
+                })
+            })
             .collect()
+    }
+
+    /// Intake from dual-path hub (OTel or native) — same SpanRecord model.
+    pub fn ingest_intake_spans(&self, spans: Vec<thine_common::IntakeSpan>) -> usize {
+        let mapped = spans
+            .into_iter()
+            .map(|s| SpanRecord {
+                trace_id: s.trace_id,
+                span_id: s.span_id,
+                parent_span_id: s.parent_span_id,
+                service: s.service,
+                name: s.name,
+                duration_ms: s.duration_ms,
+                timestamp_ms: s.timestamp_ms,
+                status: s.status,
+                resource: s.resource,
+            })
+            .collect();
+        self.ingest_spans(mapped)
+    }
+
+    pub fn ingest_intake_logs(&self, logs: Vec<thine_common::IntakeLog>) -> usize {
+        let n = logs.len();
+        for l in logs {
+            self.ingest_log(LogEvent {
+                timestamp_ms: l.timestamp_ms,
+                level: l.level,
+                service: l.service,
+                message: l.message,
+                attrs: l.attrs,
+            });
+        }
+        n
+    }
+
+    pub fn ingest_events(&self, events: Vec<thine_common::IntakeEvent>) -> usize {
+        let mut q = self.events.write();
+        let n = events.len();
+        for e in events {
+            q.push_back(PlatformEvent {
+                timestamp_ms: e.timestamp_ms,
+                title: e.title,
+                text: e.text,
+                alert_type: e.alert_type,
+                tags: e.tags,
+                source: e.source,
+            });
+        }
+        while q.len() > MAX_EVENTS {
+            q.pop_front();
+        }
+        n
+    }
+
+    pub fn list_events(&self, limit: usize) -> Vec<PlatformEvent> {
+        self.events.read().iter().rev().take(limit).cloned().collect()
     }
 
     // —— Logs / errors ——
@@ -348,11 +532,28 @@ impl PlatformState {
         let mut q = self.logs.write();
         if event.level == "error" || event.level == "fatal" {
             let key = format!("{}:{}", event.service, &event.message[..event.message.len().min(80)]);
+            let frames = stack_frames_from_log(&event);
+            let trace_id = event
+                .attrs
+                .get("trace_id")
+                .cloned()
+                .or_else(|| event.attrs.get("dd.trace_id").cloned());
             self.errors
                 .entry(key.clone())
                 .and_modify(|e| {
                     e.count += 1;
                     e.last_seen_ms = event.timestamp_ms;
+                    // Auto-regress: any new occurrence after resolve reopens as regressing.
+                    if e.status == "resolved" {
+                        e.status = "regressing".into();
+                        e.resolved_at_ms = None;
+                    }
+                    if e.stack_frames.is_empty() && !frames.is_empty() {
+                        e.stack_frames = frames.clone();
+                    }
+                    if e.linked_trace_id.is_none() {
+                        e.linked_trace_id = trace_id.clone();
+                    }
                 })
                 .or_insert_with(|| ErrorGroup {
                     id: key,
@@ -360,6 +561,13 @@ impl PlatformState {
                     message: event.message.clone(),
                     count: 1,
                     last_seen_ms: event.timestamp_ms,
+                    status: "open".into(),
+                    assignee: None,
+                    first_seen_ms: event.timestamp_ms,
+                    resolved_at_ms: None,
+                    stack_frames: frames,
+                    linked_trace_id: trace_id,
+                    linked_issues: Vec::new(),
                 });
         }
         q.push_back(event);
@@ -373,20 +581,71 @@ impl PlatformState {
         level: Option<&str>,
         limit: usize,
     ) -> Vec<LogEvent> {
-        self.logs
+        self.search_logs_query(None, service, level, limit, false).0
+    }
+
+    /// Datadog Log Explorer / Live Tail search.
+    /// Returns (logs, sample_rate) — sample_rate < 1 when Live Tail samples under load.
+    pub fn search_logs_query(
+        &self,
+        query: Option<&str>,
+        service: Option<&str>,
+        level: Option<&str>,
+        limit: usize,
+        live_tail: bool,
+    ) -> (Vec<LogEvent>, f64) {
+        let clauses = query
+            .filter(|q| !q.trim().is_empty())
+            .map(crate::logs_query::parse_log_query)
+            .unwrap_or_default();
+        let mut matched: Vec<LogEvent> = self
+            .logs
             .read()
             .iter()
             .rev()
             .filter(|e| service.map(|s| e.service == s).unwrap_or(true))
             .filter(|e| level.map(|l| e.level == l).unwrap_or(true))
-            .take(limit.min(1000))
+            .filter(|e| crate::logs_query::log_matches(e, &clauses))
             .cloned()
-            .collect()
+            .collect();
+        let cap = if live_tail { limit.min(200) } else { limit.min(1000) };
+        if live_tail && matched.len() > cap {
+            crate::logs_query::sample_logs(matched, cap)
+        } else {
+            matched.truncate(cap);
+            (matched, 1.0)
+        }
     }
+
     pub fn list_errors(&self) -> Vec<ErrorGroup> {
         let mut v: Vec<_> = self.errors.iter().map(|e| e.value().clone()).collect();
         v.sort_by(|a, b| b.count.cmp(&a.count));
         v
+    }
+
+    pub fn update_error_group(
+        &self,
+        id: &str,
+        status: Option<String>,
+        assignee: Option<String>,
+    ) -> Option<ErrorGroup> {
+        let mut entry = self.errors.get_mut(id)?;
+        if let Some(s) = status {
+            let s = s.to_ascii_lowercase();
+            if matches!(s.as_str(), "open" | "ignored" | "resolved" | "regressing") {
+                if s == "resolved" {
+                    entry.resolved_at_ms = Some(Utc::now().timestamp_millis());
+                }
+                if s == "open" || s == "regressing" {
+                    entry.resolved_at_ms = None;
+                }
+                entry.status = s;
+            }
+        }
+        if let Some(a) = assignee {
+            entry.assignee = if a.is_empty() { None } else { Some(a) };
+        }
+        Some(entry.clone())
     }
 
     // —— Misc lists ——
@@ -429,27 +688,25 @@ impl PlatformState {
             serde_json::json!({"name": "list_slos", "description": "List SLO statuses"}),
             serde_json::json!({"name": "search_logs", "description": "Search ingested logs"}),
             serde_json::json!({"name": "list_incidents", "description": "List open incidents"}),
+            serde_json::json!({"name": "run_tutorial", "description": "Run Datadog-style monitoring tutorial (agent + dashboard + monitors)"}),
+            serde_json::json!({"name": "install_agent", "description": "Bootstrap a fleet agent and seed host metrics"}),
+            serde_json::json!({"name": "create_dashboard", "description": "Create Golden Signals timeboard with template variables"}),
+            serde_json::json!({"name": "create_monitor", "description": "Create CPU/latency monitors with recovery thresholds"}),
+            serde_json::json!({"name": "list_fleet", "description": "List fleet agents and summary"}),
         ]
     }
     pub fn cli_info(&self) -> serde_json::Value {
-        serde_json::json!({
-            "name": "thine",
-            "version": env!("CARGO_PKG_VERSION"),
-            "commands": ["status", "query", "logs", "slo", "catalog"]
-        })
+        self.cli_schema()
     }
     pub fn bits_chat(&self, message: &str) -> serde_json::Value {
-        let features = crate::feature_stats();
-        serde_json::json!({
-            "role": "assistant",
-            "reply": format!(
-                "Thine Bits (stub): you said «{}». Platform coverage: {}/{} features done+partial.",
-                message,
-                features.done + features.partial,
-                features.total
-            ),
-            "citations": ["/api/v1/features", "/api/v1/dashboard"]
-        })
+        self.bits_chat_deep(message)
+    }
+
+    pub fn list_functions_json(&self) -> Vec<serde_json::Value> {
+        self.list_serverless_detailed()
+            .into_iter()
+            .map(|f| serde_json::to_value(f).unwrap_or_default())
+            .collect()
     }
     pub fn dora(&self) -> DoraMetrics {
         let deploys = self.deploys.read();
@@ -517,7 +774,12 @@ impl PlatformState {
                     team: owner.clone(),
                     tier: "critical".into(),
                     languages: vec!["rust".into(), "go".into()],
-                    links: BTreeMap::from([("repo".into(), format!("https://github.com/thine/{name}"))]),
+                    links: BTreeMap::from([
+                        ("repo".into(), format!("https://github.com/thine/{name}")),
+                        ("runbook".into(), format!("https://runbooks.thine.local/{name}")),
+                    ]),
+                    lifecycle: Some("production".into()),
+                    definition_yaml: None,
                 },
             );
         }
@@ -549,15 +811,53 @@ impl PlatformState {
                     cpu: 0.42,
                     memory_mib: 2048.0,
                     status: "up".into(),
+                    az: "us-east-1a".into(),
+                    instance_type: "m6i.large".into(),
+                    agent_version: "0.2.0".into(),
+                    cores: 2.0,
+                    load_15: 0.55,
+                    disk_pct: 48.0,
+                    container_count: 1,
+                    tags: BTreeMap::from([
+                        ("env".into(), "prod".into()),
+                        ("service".into(), svc.into()),
+                        ("cloud_provider".into(), "aws".into()),
+                    ]),
+                    alias: format!(
+                        "ip-10-0-{}-10",
+                        match svc {
+                            "api" => 1,
+                            "worker" => 2,
+                            _ => 3,
+                        }
+                    ),
+                    apps: vec!["aws".into(), "docker".into(), svc.into()],
                 },
             );
             self.containers.insert(
                 format!("{host}-ctr"),
                 ContainerInfo {
                     id: format!("{host}-ctr"),
-                    image: format!("thine/{svc}:latest"),
+                    image: format!("thine/{svc}:1.4.2"),
                     host: host.into(),
                     status: "running".into(),
+                    name: svc.into(),
+                    env: "prod".into(),
+                    service: svc.into(),
+                    version: "1.4.2".into(),
+                    runtime: "docker".into(),
+                    kube_namespace: None,
+                    pod_name: None,
+                    kube_deployment: None,
+                    cpu_pct: 22.0,
+                    cpu_limit: 1.0,
+                    mem_usage_mb: 420.0,
+                    mem_limit_mb: 1024.0,
+                    mem_rss_mb: 380.0,
+                    net_rx_bps: 120_000.0,
+                    net_tx_bps: 80_000.0,
+                    restarts: 0,
+                    started_ms: Utc::now().timestamp_millis() - 86_400_000,
                 },
             );
         }
@@ -575,6 +875,36 @@ impl PlatformState {
             target: 95.0,
             window_ms: Some(3600_000),
             tags: Some(Tags::from([("env".into(), "prod".into())])),
+        });
+        self.create_slo(CreateSlo {
+            name: "Checkout availability".into(),
+            metric: "http.server.request.count".into(),
+            target: 99.9,
+            window_ms: Some(86_400_000),
+            tags: Some(Tags::from([
+                ("env".into(), "prod".into()),
+                ("service".into(), "api".into()),
+            ])),
+        });
+        self.create_slo(CreateSlo {
+            name: "Worker success rate".into(),
+            metric: "http.server.duration".into(),
+            target: 99.5,
+            window_ms: Some(86_400_000),
+            tags: Some(Tags::from([
+                ("env".into(), "prod".into()),
+                ("service".into(), "worker".into()),
+            ])),
+        });
+        self.create_slo(CreateSlo {
+            name: "Ingest freshness".into(),
+            metric: "system.memory.usage".into(),
+            target: 99.0,
+            window_ms: Some(3_600_000),
+            tags: Some(Tags::from([
+                ("env".into(), "prod".into()),
+                ("service".into(), "ingest".into()),
+            ])),
         });
 
         self.create_incident(CreateIncident {
@@ -653,15 +983,7 @@ impl PlatformState {
                 used_gb: 320.0,
             },
         );
-        self.gpus.insert(
-            "gpu-0".into(),
-            GpuDevice {
-                id: "gpu-0".into(),
-                model: "A10G".into(),
-                util: 0.55,
-                memory_used_mb: 8192.0,
-            },
-        );
+        // GPUs seeded via seed_gpu_fleet (granular DCGM metrics)
         self.streams.insert(
             "orders".into(),
             StreamInfo {
@@ -670,15 +992,7 @@ impl PlatformState {
                 throughput: 1500.0,
             },
         );
-        self.db_instances.insert(
-            "pg-primary".into(),
-            DbInstance {
-                name: "pg-primary".into(),
-                engine: "postgres".into(),
-                qps: 240.0,
-                slow_queries: 3,
-            },
-        );
+        // DB instances expanded in seed_dbm_fleet()
         self.data_assets.insert(
             "orders_fact".into(),
             serde_json::json!({"name":"orders_fact","freshness_min":12,"owner":"Platform"}),
@@ -698,6 +1012,13 @@ impl PlatformState {
                 version: "0.1.0".into(),
                 host: "i-api-1".into(),
                 status: "healthy".into(),
+                platform: "linux".into(),
+                last_seen_ms: Utc::now().timestamp_millis(),
+                config_profile: "standard".into(),
+                checks: vec!["cpu".into(), "memory".into(), "disk".into()],
+                metrics_enabled: true,
+                logs_enabled: true,
+                apm_enabled: true,
             },
         );
         *self.network_flows.write() = vec![
@@ -717,20 +1038,24 @@ impl PlatformState {
             SpanRecord {
                 trace_id: "t1".into(),
                 span_id: "s1".into(),
+                parent_span_id: None,
                 service: "api".into(),
                 name: "http.request".into(),
                 duration_ms: 45.0,
                 timestamp_ms: now,
                 status: "ok".into(),
+                resource: None,
             },
             SpanRecord {
                 trace_id: "t1".into(),
                 span_id: "s2".into(),
+                parent_span_id: Some("s1".into()),
                 service: "worker".into(),
                 name: "queue.process".into(),
                 duration_ms: 12.0,
                 timestamp_ms: now,
                 status: "ok".into(),
+                resource: None,
             },
         ]);
         self.ingest_log(LogEvent {
@@ -738,16 +1063,112 @@ impl PlatformState {
             level: "info".into(),
             service: "api".into(),
             message: "request completed".into(),
-            attrs: BTreeMap::from([("route".into(), "/pay".into())]),
+            attrs: BTreeMap::from([
+                ("route".into(), "/pay".into()),
+                ("http.status_code".into(), "200".into()),
+                ("env".into(), "prod".into()),
+            ]),
         });
         self.ingest_log(LogEvent {
             timestamp_ms: now,
             level: "error".into(),
             service: "api".into(),
             message: "upstream timeout talking to payments".into(),
-            attrs: BTreeMap::new(),
+            attrs: BTreeMap::from([
+                ("http.status_code".into(), "500".into()),
+                ("env".into(), "prod".into()),
+                ("http.method".into(), "POST".into()),
+            ]),
         });
+        self.ingest_log(LogEvent {
+            timestamp_ms: now - 30_000,
+            level: "error".into(),
+            service: "api".into(),
+            message: "payment gateway 502".into(),
+            attrs: BTreeMap::from([
+                ("http.status_code".into(), "502".into()),
+                ("env".into(), "prod".into()),
+            ]),
+        });
+        self.ingest_log(LogEvent {
+            timestamp_ms: now - 60_000,
+            level: "warn".into(),
+            service: "api".into(),
+            message: "slow canary in staging".into(),
+            attrs: BTreeMap::from([
+                ("http.status_code".into(), "200".into()),
+                ("env".into(), "dev".into()),
+            ]),
+        });
+        for i in 0..24 {
+            let code = if i % 7 == 0 { "500" } else if i % 5 == 0 { "503" } else { "200" };
+            let level = if code == "200" { "info" } else { "error" };
+            self.ingest_log(LogEvent {
+                timestamp_ms: now - i * 45_000,
+                level: level.into(),
+                service: if i % 3 == 0 { "worker".into() } else { "api".into() },
+                message: format!("handled request #{i} status={code}"),
+                attrs: BTreeMap::from([
+                    ("http.status_code".into(), code.into()),
+                    ("env".into(), if i % 4 == 0 { "dev".into() } else { "prod".into() }),
+                    ("http.method".into(), if i % 2 == 0 { "GET".into() } else { "POST".into() }),
+                ]),
+            });
+        }
+        {
+            let story: Vec<(i64, &str, &str, &str, &str, Vec<(&str, &str)>)> = vec![
+                (6 * 3600_000, "deploy", "info", "Deploy started", "api@1.4.2 canary 5% in us-east-1", vec![("service", "api"), ("version", "1.4.2"), ("impact", "low")]),
+                (5 * 3600_000 + 1_800_000, "deploy", "info", "Canary expanded", "api@1.4.2 → 25% traffic", vec![("service", "api"), ("version", "1.4.2"), ("impact", "medium")]),
+                (5 * 3600_000, "change", "warning", "Feature flag", "payments.retry_v2 enabled for 25% of traffic", vec![("service", "api"), ("change", "feature_flag"), ("impact", "high")]),
+                (4 * 3600_000 + 2_400_000, "monitor", "error", "Monitor triggered", "High latency p95 > 90ms for 5m on api", vec![("service", "api"), ("monitor", "high-latency"), ("impact", "critical")]),
+                (4 * 3600_000 + 1_800_000, "watchdog", "error", "Watchdog anomaly", "http.server.duration 5.4σ above baseline for api", vec![("service", "api"), ("metric", "http.server.duration"), ("impact", "critical")]),
+                (4 * 3600_000 + 1_200_000, "deploy", "info", "Deploy completed", "api@1.4.2 rolled out to prod (canary → 100%)", vec![("service", "api"), ("version", "1.4.2"), ("impact", "high")]),
+                (3 * 3600_000 + 3_000_000, "incident", "error", "Incident opened", "Elevated API latency — sev high, on-call alice", vec![("service", "api"), ("severity", "high"), ("impact", "critical")]),
+                (3 * 3600_000 + 2_400_000, "monitor", "error", "Monitor triggered", "High CPU on i-api-1 crossed 85% for 5m", vec![("service", "api"), ("host", "i-api-1"), ("impact", "high")]),
+                (3 * 3600_000 + 1_800_000, "agent", "warning", "Agent check warn", "disk.usage on i-ingest-1 at 81%", vec![("host", "i-ingest-1"), ("check", "disk"), ("impact", "medium")]),
+                (3 * 3600_000, "change", "info", "Autoscaler scale-out", "api HPA 3 → 6 replicas (cpu target)", vec![("service", "api"), ("change", "hpa"), ("impact", "medium")]),
+                (2 * 3600_000 + 2_400_000, "monitor", "success", "Monitor recovered", "High CPU on i-api-1 recovered below 60%", vec![("service", "api"), ("host", "i-api-1"), ("impact", "low")]),
+                (2 * 3600_000 + 1_800_000, "watchdog", "warning", "Watchdog anomaly", "worker request count −3.6σ — queue stall suspected", vec![("service", "worker"), ("metric", "http.server.request.count"), ("impact", "high")]),
+                (2 * 3600_000 + 900_000, "deploy", "info", "Worker deploy", "worker@2.1.0 started rollout (blue/green)", vec![("service", "worker"), ("version", "2.1.0"), ("impact", "medium")]),
+                (2 * 3600_000, "agent", "info", "Agent check", "disk.usage on i-worker-1 is OK (62%)", vec![("host", "i-worker-1"), ("check", "disk"), ("impact", "low")]),
+                (90 * 60_000, "synthetic", "error", "Synthetic failed", "Checkout critical path failed in aws:us-east-1 (6.1s)", vec![("test", "syn-checkout"), ("impact", "critical")]),
+                (75 * 60_000, "rum", "warning", "RUM spike", "Checkout bounce rate +18pts vs 1h baseline", vec![("view", "/checkout"), ("impact", "high")]),
+                (60 * 60_000, "monitor", "error", "SLO burn alert", "API latency SLO burning 4.2× — 2h window", vec![("slo", "API latency SLO"), ("impact", "critical")]),
+                (45 * 60_000, "change", "warning", "Config change", "Circuit breaker payments.timeout 2s → 800ms", vec![("service", "api"), ("change", "config"), ("impact", "high")]),
+                (30 * 60_000, "watchdog", "error", "Watchdog anomaly", "USM error rate spike on api without matching APM tags", vec![("service", "api"), ("impact", "high")]),
+                (20 * 60_000, "incident", "warning", "Incident update", "Mitigation: retry_v2 rolled back to 0%", vec![("service", "api"), ("impact", "high")]),
+                (12 * 60_000, "monitor", "success", "Monitor recovered", "High latency recovered under 70ms p95", vec![("service", "api"), ("impact", "medium")]),
+                (8 * 60_000, "deploy", "info", "Rollback complete", "payments.retry_v2 disabled globally", vec![("service", "api"), ("impact", "high")]),
+                (5 * 60_000, "agent", "info", "Fleet heartbeat", "3 agents healthy — DogStatsD 6.0/s", vec![("fleet", "ok"), ("impact", "low")]),
+                (2 * 60_000, "synthetic", "success", "Synthetic recovered", "Checkout critical path OK (2.2s)", vec![("test", "syn-checkout"), ("impact", "medium")]),
+                (60_000, "incident", "success", "Incident mitigated", "API latency back to baseline — monitoring", vec![("service", "api"), ("impact", "high")]),
+            ];
+            let mut batch = Vec::with_capacity(story.len());
+            for (ago, source, alert_type, title, text, tag_pairs) in story {
+                let mut tags = Tags::from([("env".into(), "prod".into())]);
+                for (k, v) in tag_pairs {
+                    tags.insert(k.into(), v.into());
+                }
+                batch.push(thine_common::IntakeEvent {
+                    timestamp_ms: now - ago,
+                    title: title.into(),
+                    text: text.into(),
+                    alert_type: alert_type.into(),
+                    tags,
+                    source: source.into(),
+                });
+            }
+            self.ingest_events(batch);
+        }
         self.audit("seed", "platform", "system");
+        self.seed_deep();
+        self.seed_close_gap();
+        self.seed_dd_wins();
+        self.seed_obs18();
+        self.seed_gpu_fleet();
+        self.seed_dbm_fleet();
+        self.seed_ai_obs();
+        self.seed_infra_fleet();
     }
 }
 
@@ -759,6 +1180,8 @@ pub struct Notebook {
     pub title: String,
     pub cells: Vec<NotebookCell>,
     pub updated_at_ms: i64,
+    #[serde(default)]
+    pub share_token: Option<String>,
 }
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct NotebookCell {
@@ -878,6 +1301,10 @@ pub struct CatalogService {
     pub tier: String,
     pub languages: Vec<String>,
     pub links: BTreeMap<String, String>,
+    #[serde(default)]
+    pub lifecycle: Option<String>,
+    #[serde(default)]
+    pub definition_yaml: Option<String>,
 }
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Integration {
@@ -894,6 +1321,26 @@ pub struct HostInfo {
     pub cpu: f64,
     pub memory_mib: f64,
     pub status: String,
+    #[serde(default)]
+    pub az: String,
+    #[serde(default)]
+    pub instance_type: String,
+    #[serde(default)]
+    pub agent_version: String,
+    #[serde(default)]
+    pub cores: f64,
+    #[serde(default)]
+    pub load_15: f64,
+    #[serde(default)]
+    pub disk_pct: f64,
+    #[serde(default)]
+    pub container_count: u32,
+    #[serde(default)]
+    pub tags: BTreeMap<String, String>,
+    #[serde(default)]
+    pub alias: String,
+    #[serde(default)]
+    pub apps: Vec<String>,
 }
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ContainerInfo {
@@ -901,16 +1348,54 @@ pub struct ContainerInfo {
     pub image: String,
     pub host: String,
     pub status: String,
+    #[serde(default)]
+    pub name: String,
+    #[serde(default)]
+    pub env: String,
+    #[serde(default)]
+    pub service: String,
+    #[serde(default)]
+    pub version: String,
+    #[serde(default)]
+    pub runtime: String,
+    #[serde(default)]
+    pub kube_namespace: Option<String>,
+    #[serde(default)]
+    pub pod_name: Option<String>,
+    #[serde(default)]
+    pub kube_deployment: Option<String>,
+    #[serde(default)]
+    pub cpu_pct: f64,
+    #[serde(default)]
+    pub cpu_limit: f64,
+    #[serde(default)]
+    pub mem_usage_mb: f64,
+    #[serde(default)]
+    pub mem_limit_mb: f64,
+    #[serde(default)]
+    pub mem_rss_mb: f64,
+    #[serde(default)]
+    pub net_rx_bps: f64,
+    #[serde(default)]
+    pub net_tx_bps: f64,
+    #[serde(default)]
+    pub restarts: u32,
+    #[serde(default)]
+    pub started_ms: i64,
 }
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SpanRecord {
     pub trace_id: String,
     pub span_id: String,
+    #[serde(default)]
+    pub parent_span_id: Option<String>,
     pub service: String,
     pub name: String,
     pub duration_ms: f64,
     pub timestamp_ms: i64,
     pub status: String,
+    #[serde(default)]
+    pub resource: Option<String>,
 }
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LogEvent {
@@ -920,6 +1405,19 @@ pub struct LogEvent {
     pub message: String,
     #[serde(default)]
     pub attrs: BTreeMap<String, String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PlatformEvent {
+    pub timestamp_ms: i64,
+    pub title: String,
+    pub text: String,
+    #[serde(default)]
+    pub alert_type: String,
+    #[serde(default)]
+    pub tags: BTreeMap<String, String>,
+    #[serde(default)]
+    pub source: String,
 }
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AuditEvent {
@@ -936,6 +1434,43 @@ pub struct ErrorGroup {
     pub message: String,
     pub count: u64,
     pub last_seen_ms: i64,
+    #[serde(default = "default_error_status")]
+    pub status: String, // open | ignored | resolved | regressing
+    #[serde(default)]
+    pub assignee: Option<String>,
+    #[serde(default)]
+    pub first_seen_ms: i64,
+    #[serde(default)]
+    pub resolved_at_ms: Option<i64>,
+    /// Stack frames (top → bottom) — Datadog Error Tracking detail.
+    #[serde(default)]
+    pub stack_frames: Vec<String>,
+    #[serde(default)]
+    pub linked_trace_id: Option<String>,
+    #[serde(default)]
+    pub linked_issues: Vec<String>,
+}
+
+fn default_error_status() -> String {
+    "open".into()
+}
+
+fn stack_frames_from_log(event: &LogEvent) -> Vec<String> {
+    if let Some(stack) = event.attrs.get("stack").or_else(|| event.attrs.get("error.stack")) {
+        return stack
+            .lines()
+            .map(|l| l.trim().to_string())
+            .filter(|l| !l.is_empty())
+            .take(24)
+            .collect();
+    }
+    // Synthesize a Datadog-like frame list from service + message for demo fidelity.
+    vec![
+        format!("{}::handler", event.service),
+        "middleware::trace".into(),
+        "runtime::block_on".into(),
+        format!("caused by: {}", event.message.chars().take(80).collect::<String>()),
+    ]
 }
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AgentInfo {
@@ -969,13 +1504,6 @@ pub struct VolumeInfo {
     pub used_gb: f64,
 }
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct GpuDevice {
-    pub id: String,
-    pub model: String,
-    pub util: f64,
-    pub memory_used_mb: f64,
-}
-#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct StreamInfo {
     pub name: String,
     pub lag: u64,
@@ -987,6 +1515,102 @@ pub struct DbInstance {
     pub engine: String,
     pub qps: f64,
     pub slow_queries: u64,
+    #[serde(default)]
+    pub host: String,
+    #[serde(default = "default_primary")]
+    pub role: String,
+    #[serde(default)]
+    pub version: String,
+    #[serde(default)]
+    pub port: u16,
+    #[serde(default)]
+    pub connections: f64,
+    #[serde(default)]
+    pub active_connections: f64,
+    #[serde(default)]
+    pub idle_connections: f64,
+    #[serde(default)]
+    pub waiting_connections: f64,
+    #[serde(default)]
+    pub max_connections: f64,
+    #[serde(default)]
+    pub connections_pct: f64,
+    #[serde(default)]
+    pub tps: f64,
+    #[serde(default)]
+    pub rollbacks_per_sec: f64,
+    #[serde(default)]
+    pub avg_query_ms: f64,
+    #[serde(default)]
+    pub p95_query_ms: f64,
+    #[serde(default)]
+    pub p99_query_ms: f64,
+    #[serde(default)]
+    pub rows_returned_per_sec: f64,
+    #[serde(default)]
+    pub rows_fetched_per_sec: f64,
+    #[serde(default)]
+    pub rows_inserted_per_sec: f64,
+    #[serde(default)]
+    pub rows_updated_per_sec: f64,
+    #[serde(default)]
+    pub rows_deleted_per_sec: f64,
+    #[serde(default)]
+    pub buffer_hit_ratio: f64,
+    #[serde(default)]
+    pub blocks_hit_per_sec: f64,
+    #[serde(default)]
+    pub blocks_read_per_sec: f64,
+    #[serde(default)]
+    pub temp_bytes_per_sec: f64,
+    #[serde(default)]
+    pub deadlocks_per_sec: f64,
+    #[serde(default)]
+    pub locks_waiting: f64,
+    #[serde(default)]
+    pub avg_lock_wait_ms: f64,
+    #[serde(default)]
+    pub replication_lag_ms: f64,
+    #[serde(default)]
+    pub disk_read_ops: f64,
+    #[serde(default)]
+    pub disk_write_ops: f64,
+    #[serde(default)]
+    pub cpu_pct: f64,
+    #[serde(default)]
+    pub mem_used_pct: f64,
+    #[serde(default)]
+    pub dead_rows: u64,
+    #[serde(default)]
+    pub live_rows: u64,
+    #[serde(default)]
+    pub autovacuum_workers: u32,
+    #[serde(default)]
+    pub index_bloat_pct: f64,
+    #[serde(default)]
+    pub table_bloat_pct: f64,
+    #[serde(default)]
+    pub buffer_pool_utilization: f64,
+    #[serde(default)]
+    pub buffer_pool_bytes: f64,
+    #[serde(default)]
+    pub buffer_pool_dirty_bytes: f64,
+    #[serde(default)]
+    pub tmp_tables_per_sec: f64,
+    #[serde(default)]
+    pub tmp_disk_tables_per_sec: f64,
+    #[serde(default)]
+    pub open_files: u32,
+    #[serde(default)]
+    pub connection_errors_per_sec: f64,
+    #[serde(default)]
+    pub uptime_hours: f64,
+    #[serde(default)]
+    pub size_gb: f64,
+}
+
+fn default_primary() -> String {
+    "primary".into()
 }
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SdsRule {
@@ -1000,6 +1624,20 @@ pub struct FleetAgent {
     pub version: String,
     pub host: String,
     pub status: String,
+    #[serde(default)]
+    pub platform: String,
+    #[serde(default)]
+    pub last_seen_ms: i64,
+    #[serde(default)]
+    pub config_profile: String,
+    #[serde(default)]
+    pub checks: Vec<String>,
+    #[serde(default)]
+    pub metrics_enabled: bool,
+    #[serde(default)]
+    pub logs_enabled: bool,
+    #[serde(default)]
+    pub apm_enabled: bool,
 }
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CostSummary {

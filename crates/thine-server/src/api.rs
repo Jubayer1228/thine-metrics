@@ -6,7 +6,9 @@ use axum::routing::{get, post};
 use axum::{Json, Router};
 use serde::Deserialize;
 use serde_json::json;
-use thine_common::{CreateAlertRequest, CreateBoardRequest, QueryRequest};
+use thine_common::{
+    CreateAlertRequest, CreateBoardRequest, DashboardWidget, QueryRequest, UpdateBoardRequest,
+};
 use thine_storage::health;
 use uuid::Uuid;
 
@@ -24,13 +26,45 @@ pub fn routes() -> Router<AppState> {
         .route("/api/v1/alerts", get(list_alerts).post(create_alert))
         .route("/api/v1/alerts/{id}", axum::routing::delete(delete_alert))
         .route("/api/v1/alerts/events", get(alert_events))
+        // Static board paths before `{id}` so they are not captured as UUIDs.
+        .route(
+            "/api/v1/boards/lists",
+            get(list_board_lists).post(create_board_list),
+        )
+        .route(
+            "/api/v1/boards/clipboard",
+            get(clipboard_get).post(clipboard_set),
+        )
+        .route("/api/v1/boards/deleted", get(list_deleted_boards))
         .route("/api/v1/boards", get(list_boards).post(create_board))
-        .route("/api/v1/boards/{id}", get(get_board).delete(delete_board))
+        .route(
+            "/api/v1/boards/{id}",
+            get(get_board)
+                .put(update_board)
+                .delete(delete_board),
+        )
         .route("/api/v1/boards/{id}/render", get(render_board))
+        .route("/api/v1/boards/{id}/share", post(share_board))
+        .route("/api/v1/boards/{id}/restore", post(restore_board))
+        .route("/api/v1/boards/{id}/anomalies", get(board_anomalies))
+        .route("/api/v1/dashboards/guide", get(dashboards_guide))
+        .route(
+            "/api/v1/graph_insights/correlations",
+            post(graph_correlations),
+        )
+        .route("/api/v1/graph_insights/explain", post(graph_explain))
+        .route("/api/v1/graph_insights/guide", get(graph_insights_guide))
         .route("/api/v1/metrics/summary", get(metrics_summary))
-        // OpenTelemetry OTLP/HTTP (JSON) — drop-in for OTEL collectors/SDKs
+        // Dual-path intake architecture (native + OTel converge → fan-out)
+        .route("/api/v1/ingest/architecture", get(ingest_architecture))
+        .route("/api/v1/events", get(list_events).post(ingest_events))
+        // OpenTelemetry OTLP/HTTP (JSON) — metrics / traces / logs
         .route("/v1/metrics", post(otlp_metrics))
         .route("/otlp/v1/metrics", post(otlp_metrics))
+        .route("/v1/traces", post(otlp_traces))
+        .route("/otlp/v1/traces", post(otlp_traces))
+        .route("/v1/logs", post(otlp_logs))
+        .route("/otlp/v1/logs", post(otlp_logs))
 }
 
 async fn health_handler() -> impl IntoResponse {
@@ -164,7 +198,35 @@ async fn ingest_statsd(State(state): State<AppState>, body: String) -> impl Into
     Json(state.ingest.ingest_statsd_lines(&body))
 }
 
-async fn otlp_metrics(State(state): State<AppState>, body: axum::body::Bytes) -> impl IntoResponse {
+fn reject_protobuf(headers: &axum::http::HeaderMap) -> Option<axum::response::Response> {
+    let ct = headers
+        .get(axum::http::header::CONTENT_TYPE)
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("");
+    if ct.contains("protobuf") || ct.contains("application/x-protobuf") {
+        return Some(
+            (
+                StatusCode::UNSUPPORTED_MEDIA_TYPE,
+                Json(json!({
+                    "error": "OTLP protobuf framing accepted at edge — decode via OTLP/HTTP JSON on this build. Set Content-Type: application/json (OTel HTTP JSON exporter) or terminate protobuf at an OTel Collector → Thine JSON exporter.",
+                    "supported": ["application/json", "application/json; charset=utf-8"],
+                    "paths": ["/v1/metrics", "/v1/traces", "/v1/logs"]
+                })),
+            )
+                .into_response(),
+        );
+    }
+    None
+}
+
+async fn otlp_metrics(
+    State(state): State<AppState>,
+    headers: axum::http::HeaderMap,
+    body: axum::body::Bytes,
+) -> impl IntoResponse {
+    if let Some(r) = reject_protobuf(&headers) {
+        return r;
+    }
     match state.ingest.ingest_otlp_json(&body) {
         Ok(stats) => (
             StatusCode::OK,
@@ -183,6 +245,67 @@ async fn otlp_metrics(State(state): State<AppState>, body: axum::body::Bytes) ->
         )
             .into_response(),
     }
+}
+
+async fn otlp_traces(
+    State(state): State<AppState>,
+    headers: axum::http::HeaderMap,
+    body: axum::body::Bytes,
+) -> impl IntoResponse {
+    if let Some(r) = reject_protobuf(&headers) {
+        return r;
+    }
+    match state.ingest.ingest_otlp_traces_json(&body) {
+        Ok(v) => (StatusCode::OK, Json(v)).into_response(),
+        Err(e) => (
+            StatusCode::BAD_REQUEST,
+            Json(json!({ "error": e.to_string() })),
+        )
+            .into_response(),
+    }
+}
+
+async fn otlp_logs(
+    State(state): State<AppState>,
+    headers: axum::http::HeaderMap,
+    body: axum::body::Bytes,
+) -> impl IntoResponse {
+    if let Some(r) = reject_protobuf(&headers) {
+        return r;
+    }
+    match state.ingest.ingest_otlp_logs_json(&body) {
+        Ok(v) => (StatusCode::OK, Json(v)).into_response(),
+        Err(e) => (
+            StatusCode::BAD_REQUEST,
+            Json(json!({ "error": e.to_string() })),
+        )
+            .into_response(),
+    }
+}
+
+async fn ingest_architecture(State(state): State<AppState>) -> impl IntoResponse {
+    state.refresh_durable_stats();
+    Json(state.ingest.architecture())
+}
+
+async fn list_events(
+    State(state): State<AppState>,
+    Query(q): Query<ListEventsQuery>,
+) -> impl IntoResponse {
+    Json(state.platform.list_events(q.limit.unwrap_or(50)))
+}
+
+#[derive(Debug, Deserialize)]
+struct ListEventsQuery {
+    limit: Option<usize>,
+}
+
+async fn ingest_events(
+    State(state): State<AppState>,
+    Json(events): Json<Vec<thine_common::IntakeEvent>>,
+) -> impl IntoResponse {
+    let n = state.ingest.ingest_native_events(events);
+    Json(json!({ "accepted": n, "path": "native", "signal": "events" }))
 }
 
 async fn stats(State(state): State<AppState>) -> impl IntoResponse {
@@ -247,6 +370,21 @@ async fn create_board(
     (StatusCode::CREATED, Json(state.store.create_board(req)))
 }
 
+async fn update_board(
+    State(state): State<AppState>,
+    Path(id): Path<Uuid>,
+    Json(req): Json<UpdateBoardRequest>,
+) -> impl IntoResponse {
+    match state.store.update_board(id, req) {
+        Some(b) => Json(b).into_response(),
+        None => (
+            StatusCode::NOT_FOUND,
+            Json(json!({ "error": "board not found" })),
+        )
+            .into_response(),
+    }
+}
+
 async fn delete_board(State(state): State<AppState>, Path(id): Path<Uuid>) -> impl IntoResponse {
     if state.store.delete_board(id) {
         StatusCode::NO_CONTENT.into_response()
@@ -260,10 +398,178 @@ async fn delete_board(State(state): State<AppState>, Path(id): Path<Uuid>) -> im
 }
 
 #[derive(Debug, Deserialize)]
+struct ShareBody {
+    public: bool,
+}
+
+async fn share_board(
+    State(state): State<AppState>,
+    Path(id): Path<Uuid>,
+    Json(body): Json<ShareBody>,
+) -> impl IntoResponse {
+    match state.store.share_board(id, body.public) {
+        Some(b) => Json(b).into_response(),
+        None => (
+            StatusCode::NOT_FOUND,
+            Json(json!({ "error": "board not found" })),
+        )
+            .into_response(),
+    }
+}
+
+#[derive(Debug, Deserialize)]
+struct CreateListBody {
+    name: String,
+    #[serde(default)]
+    board_ids: Vec<Uuid>,
+}
+
+async fn list_board_lists(State(state): State<AppState>) -> impl IntoResponse {
+    Json(state.store.list_board_lists())
+}
+
+async fn create_board_list(
+    State(state): State<AppState>,
+    Json(body): Json<CreateListBody>,
+) -> impl IntoResponse {
+    (
+        StatusCode::CREATED,
+        Json(state.store.create_board_list(body.name, body.board_ids)),
+    )
+}
+
+async fn clipboard_get(State(state): State<AppState>) -> impl IntoResponse {
+    Json(state.store.clipboard_get())
+}
+
+async fn clipboard_set(
+    State(state): State<AppState>,
+    Json(widgets): Json<Vec<DashboardWidget>>,
+) -> impl IntoResponse {
+    state.store.clipboard_set(widgets);
+    Json(json!({ "ok": true, "count": state.store.clipboard_get().len() }))
+}
+
+async fn list_deleted_boards(State(state): State<AppState>) -> impl IntoResponse {
+    Json(state.store.list_deleted_boards())
+}
+
+#[derive(Debug, Deserialize)]
+struct RestoreBody {
+    /// Optional dashboard list id to restore into ("Restore to").
+    #[serde(default)]
+    list_id: Option<String>,
+}
+
+async fn restore_board(
+    State(state): State<AppState>,
+    Path(id): Path<Uuid>,
+    Json(body): Json<RestoreBody>,
+) -> impl IntoResponse {
+    match state
+        .store
+        .restore_board(id, body.list_id.as_deref())
+    {
+        Some(b) => Json(b).into_response(),
+        None => (
+            StatusCode::NOT_FOUND,
+            Json(json!({ "error": "board not found" })),
+        )
+            .into_response(),
+    }
+}
+
+#[derive(Debug, Deserialize)]
+struct AnomaliesQuery {
+    range_ms: Option<i64>,
+    /// Auto-detect issues (browser preference); default true.
+    auto_detect: Option<bool>,
+}
+
+async fn board_anomalies(
+    State(state): State<AppState>,
+    Path(id): Path<Uuid>,
+    Query(q): Query<AnomaliesQuery>,
+) -> impl IntoResponse {
+    let range_ms = q.range_ms.unwrap_or(3_600_000);
+    let auto = q.auto_detect.unwrap_or(true);
+    match state.platform.board_anomalies(id, range_ms, auto) {
+        Some(r) => Json(r).into_response(),
+        None => (
+            StatusCode::NOT_FOUND,
+            Json(json!({ "error": "board not found" })),
+        )
+            .into_response(),
+    }
+}
+
+async fn graph_correlations(
+    State(state): State<AppState>,
+    Json(req): Json<thine_platform::CorrelationSearchRequest>,
+) -> impl IntoResponse {
+    Json(state.platform.graph_correlations(req))
+}
+
+async fn graph_explain(
+    State(state): State<AppState>,
+    Json(req): Json<thine_platform::WatchdogExplainRequest>,
+) -> impl IntoResponse {
+    Json(state.platform.graph_watchdog_explain(req))
+}
+
+async fn graph_insights_guide(State(state): State<AppState>) -> impl IntoResponse {
+    Json(state.platform.graph_insights_guide())
+}
+
+async fn dashboards_guide() -> impl IntoResponse {
+    Json(json!({
+        "title": "Dashboards",
+        "docs": "https://docs.datadoghq.com/dashboards/",
+        "overview": "Real-time insights into system health, KPIs, trends, and anomalies.",
+        "layouts": [
+            {"id": "dashboard", "label": "Dashboard", "desc": "12-column grid for status boards and storytelling"},
+            {"id": "timeboard", "label": "Timeboard", "desc": "Shared time cursor across widgets for troubleshooting"},
+            {"id": "screenboard", "label": "Screenboard", "desc": "Free-form layout for NOC / executive views"}
+        ],
+        "features": [
+            {"id": "configure", "path": "/api/v1/boards/{id}", "desc": "General configuration options"},
+            {"id": "dashboard_list", "path": "/api/v1/boards/lists", "desc": "Search, view, or create dashboard lists"},
+            {"id": "template_variables", "path": "/api/v1/boards/{id}/render?vars=", "desc": "Dynamically filter widgets"},
+            {"id": "clipboard", "path": "/api/v1/boards/clipboard", "desc": "Copy and move dashboard widgets"},
+            {"id": "api", "path": "/api/v1/boards", "desc": "Manage dashboards programmatically"},
+            {"id": "widgets", "path": "/api/v1/boards/{id}/render", "desc": "Timeseries, query value, toplist, pie, table, heatmap, …"},
+            {"id": "querying", "path": "/api/v1/query", "desc": "Metric query formatting"},
+            {"id": "functions", "path": "widget.functions", "desc": "rate, cumsum, abs, top, exclude_null, anomalies"},
+            {"id": "overlays", "path": "board.annotations", "desc": "Event overlays and annotations on graphs"},
+            {"id": "sharing", "path": "/api/v1/boards/{id}/share", "desc": "Public share tokens (30s refresh)"},
+            {"id": "graph_insights", "path": "/api/v1/graph_insights/guide", "desc": "Metric Correlations, Watchdog Explains, dashboard anomalies"},
+            {"id": "recently_deleted", "path": "/api/v1/boards/deleted", "desc": "Soft-deleted boards recoverable for 30 days"}
+        ],
+        "refresh_rates": [
+            {"timeframe": "≤10m", "secs": 10},
+            {"timeframe": "≤1h", "secs": 20},
+            {"timeframe": "≤4h", "secs": 60},
+            {"timeframe": "≤1d", "secs": 180},
+            {"timeframe": "≤2d", "secs": 600},
+            {"timeframe": ">2d", "secs": 3600},
+            {"timeframe": "public", "secs": 30}
+        ],
+        "widget_types": [
+            "timeseries", "query_value", "toplist", "note", "group",
+            "heatmap", "distribution", "pie_chart", "table", "hostmap",
+            "slo", "event_stream", "alert_graph", "change", "scatter_plot",
+            "funnel", "list_stream", "check_status"
+        ]
+    }))
+}
+
+#[derive(Debug, Deserialize)]
 struct RenderQuery {
     range_ms: Option<i64>,
     /// Comma-separated tag filters applied to every widget, e.g. `env:prod`
     tags: Option<String>,
+    /// Template variable selections, e.g. `env:prod,gpu_id:0`
+    vars: Option<String>,
 }
 
 async fn render_board(
@@ -272,9 +578,13 @@ async fn render_board(
     Query(q): Query<RenderQuery>,
 ) -> impl IntoResponse {
     let tags = parse_tag_filters(q.tags.as_deref());
+    let vars = parse_tag_filters(q.vars.as_deref());
     let range_ms = q.range_ms.unwrap_or(3_600_000);
     let store = state.store.clone();
-    let result = tokio::task::spawn_blocking(move || store.render_board(id, range_ms, &tags)).await;
+    let result = tokio::task::spawn_blocking(move || {
+        store.render_board(id, range_ms, &tags, &vars)
+    })
+    .await;
     match result {
         Ok(Ok(board)) => Json(board).into_response(),
         Ok(Err(e)) => (

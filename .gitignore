@@ -8,6 +8,9 @@ ui/.vite
 .env.*
 *.log
 docs/captures/
+/data/
+/tmp/
+audit-screenshots/
 .idea
 .vscode
 __pycache__/

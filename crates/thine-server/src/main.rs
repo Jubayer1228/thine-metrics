@@ -2,6 +2,8 @@
 
 mod api;
 mod demo;
+mod dogstatsd;
+mod fleet_agent;
 mod platform_api;
 mod state;
 
@@ -28,7 +30,16 @@ async fn main() -> Result<()> {
     let port: u16 = std::env::var("THINE_PORT")
         .ok()
         .and_then(|p| p.parse().ok())
+        .or_else(|| {
+            std::env::var("PORT")
+                .ok()
+                .and_then(|p| p.parse().ok())
+        })
         .unwrap_or(4318);
+    let statsd_port: u16 = std::env::var("THINE_STATSD_PORT")
+        .ok()
+        .and_then(|p| p.parse().ok())
+        .unwrap_or(8125);
     let seed_demo = std::env::var("THINE_SEED_DEMO")
         .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
         .unwrap_or(true);
@@ -38,6 +49,26 @@ async fn main() -> Result<()> {
         demo::seed(&state.store);
         state.platform.seed_demo();
         info!("seeded demo metrics + platform modules");
+    }
+
+    // Native DogStatsD UDP (Datadog Agent :8125 path)
+    {
+        let ingest = state.ingest.clone();
+        tokio::spawn(async move {
+            dogstatsd::run_dogstatsd(ingest, statsd_port).await;
+        });
+    }
+
+    // Periodic durable stats refresh for architecture API
+    {
+        let state_bg = state.clone();
+        tokio::spawn(async move {
+            loop {
+                tokio::time::sleep(std::time::Duration::from_secs(5)).await;
+                state_bg.refresh_durable_stats();
+                state_bg.husky.flush();
+            }
+        });
     }
 
     // Background demo generator keeps the UI alive for local demos.

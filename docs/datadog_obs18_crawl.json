@@ -1,0 +1,386 @@
+{
+  "crawled_at": "2026-10-03T06:41:43.426Z",
+  "results": [
+    {
+      "id": "infrastructure",
+      "url": "https://docs.datadoghq.com/infrastructure/",
+      "ok": true,
+      "status": 200,
+      "title": "Infrastructure",
+      "h1": "Infrastructure",
+      "headings": [
+        "Overview",
+        "Components",
+        "Further Reading",
+        "Can't find something?",
+        "How can I help you today?"
+      ],
+      "bullets": [],
+      "summary": null
+    },
+    {
+      "id": "metrics",
+      "url": "https://docs.datadoghq.com/metrics/",
+      "ok": true,
+      "status": 200,
+      "title": "Metrics",
+      "h1": "Metrics",
+      "headings": [
+        "Overview",
+        "What are metrics?",
+        "Why are metrics useful?",
+        "Submitting metrics to Datadog",
+        "Metric types and real-time metrics visibility",
+        "Querying metrics",
+        "Anatomy of a metric query",
+        "Time and space aggregation",
+        "View real-time information about metrics",
+        "Further reading",
+        "Can't find something?",
+        "How can I help you today?"
+      ],
+      "bullets": [],
+      "summary": null
+    },
+    {
+      "id": "containers",
+      "url": "https://docs.datadoghq.com/containers/",
+      "ok": true,
+      "status": 200,
+      "title": "Containers",
+      "h1": "Containers",
+      "headings": [
+        "Get started",
+        "Datadog Container Monitoring",
+        "Docker-based environments",
+        "Kubernetes environments",
+        "Amazon ECS",
+        "Miscellaneous",
+        "Further reading",
+        "Can't find something?",
+        "How can I help you today?"
+      ],
+      "bullets": [],
+      "summary": null
+    },
+    {
+      "id": "serverless",
+      "url": "https://docs.datadoghq.com/serverless/",
+      "ok": true,
+      "status": 200,
+      "title": "Serverless",
+      "h1": "Serverless",
+      "headings": [
+        "AWS Lambda",
+        "AWS Step Functions",
+        "Azure App Service",
+        "Azure Container Apps",
+        "Google Cloud Run",
+        "Further Reading",
+        "Can't find something?",
+        "How can I help you today?"
+      ],
+      "bullets": [],
+      "summary": null
+    },
+    {
+      "id": "network",
+      "url": "https://docs.datadoghq.com/network_monitoring/",
+      "ok": true,
+      "status": 200,
+      "title": "Network Monitoring",
+      "h1": "Network Monitoring",
+      "headings": [
+        "Further Reading",
+        "Can't find something?",
+        "How can I help you today?"
+      ],
+      "bullets": [],
+      "summary": null
+    },
+    {
+      "id": "cloud_cost",
+      "url": "https://docs.datadoghq.com/cloud_cost_management/",
+      "ok": true,
+      "status": 200,
+      "title": "Cloud Cost Management",
+      "h1": "Cloud Cost Management",
+      "headings": [
+        "Overview",
+        "Setup",
+        "Use cloud cost data",
+        "Use daily Datadog cost data",
+        "Tagging and cost allocation",
+        "Create a cost monitor",
+        "Allocate costs",
+        "Permissions",
+        "Review data history",
+        "Use AI for cost analysis",
+        "Further reading",
+        "Can't find something?",
+        "How can I help you today?"
+      ],
+      "bullets": [],
+      "summary": null
+    },
+    {
+      "id": "cloudcraft",
+      "url": "https://docs.datadoghq.com/cloudcraft_in_datadog/",
+      "ok": false,
+      "status": 404,
+      "title": "404 Page not found",
+      "h1": "Arf.",
+      "headings": [
+        "Can't find something?"
+      ],
+      "bullets": [],
+      "summary": null
+    },
+    {
+      "id": "storage",
+      "url": "https://docs.datadoghq.com/infrastructure/storage/",
+      "ok": false,
+      "status": 404,
+      "title": "404 Page not found",
+      "h1": "Arf.",
+      "headings": [
+        "Can't find something?"
+      ],
+      "bullets": [],
+      "summary": null
+    },
+    {
+      "id": "apm",
+      "url": "https://docs.datadoghq.com/tracing/",
+      "ok": true,
+      "status": 200,
+      "title": "APM",
+      "h1": "APM",
+      "headings": [
+        "Overview",
+        "Getting started",
+        "Use cases",
+        "Trace Explorer",
+        "Service page",
+        "Correlating traces with other telemetry",
+        "Ingestion controls and retention filters",
+        "Troubleshooting",
+        "Further reading",
+        "Can't find something?",
+        "How can I help you today?"
+      ],
+      "bullets": [],
+      "summary": null
+    },
+    {
+      "id": "usm",
+      "url": "https://docs.datadoghq.com/universal_service_monitoring/",
+      "ok": true,
+      "status": 200,
+      "title": "Universal Service Monitoring",
+      "h1": "Universal Service Monitoring",
+      "headings": [
+        "Overview",
+        "Setup",
+        "Automatic service tagging",
+        "Exploring your services",
+        "Further Reading",
+        "Can't find something?",
+        "How can I help you today?"
+      ],
+      "bullets": [],
+      "summary": null
+    },
+    {
+      "id": "profiler",
+      "url": "https://docs.datadoghq.com/profiler/",
+      "ok": true,
+      "status": 200,
+      "title": "Continuous Profiler",
+      "h1": "Continuous Profiler",
+      "headings": [
+        "Low impact in production",
+        "Getting started",
+        "Instrument your application",
+        "Guide to using the profiler",
+        "Explore Datadog profiler",
+        "Profile types",
+        "Search profiles by tags",
+        "Track function performance over deployments",
+        "Connect traces to profiling data",
+        "Find changes in performance by comparing profiles",
+        "Further Reading",
+        "Can't find something?",
+        "How can I help you today?"
+      ],
+      "bullets": [],
+      "summary": null
+    },
+    {
+      "id": "dbm",
+      "url": "https://docs.datadoghq.com/database_monitoring/",
+      "ok": true,
+      "status": 200,
+      "title": "Database Monitoring",
+      "h1": "Database Monitoring",
+      "headings": [
+        "Getting started",
+        "Postgres",
+        "MySQL",
+        "MariaDB",
+        "Oracle",
+        "SQL Server",
+        "MongoDB",
+        "Amazon DocumentDB",
+        "ClickHouse",
+        "Explore Datadog Database Monitoring",
+        "Dig into query performance metrics",
+        "Explore query samples",
+        "Understand before you run",
+        "Collect custom metrics",
+        "Visualize everything on enriched dashboards",
+        "Optimize host health and performance",
+        "View optimization recommendations",
+        "Further Reading",
+        "Can't find something?",
+        "How can I help you today?"
+      ],
+      "bullets": [],
+      "summary": null
+    },
+    {
+      "id": "dsm",
+      "url": "https://docs.datadoghq.com/data_streams/",
+      "ok": true,
+      "status": 200,
+      "title": "Data Streams Monitoring",
+      "h1": "Data Streams Monitoring",
+      "headings": [
+        "Supported languages and technologies",
+        "Setup",
+        "By language",
+        "By technology",
+        "Explore Data Streams Monitoring",
+        "Visualize the architecture of your streaming data pipelines",
+        "Measure end-to-end pipeline health with new metrics",
+        "Monitor end-to-end latency of any pathway",
+        "Alert on slowdowns in event-driven applications",
+        "Attribute incoming messages to any queue, service, or cluster",
+        "Quickly pivot to identify root causes in infrastructure, logs, or traces",
+        "Monitor connector throughput and status",
+        "Troubleshooting",
+        "End-to-end latency metric doesn’t look accurate",
+        "Further Reading",
+        "Can't find something?",
+        "How can I help you today?"
+      ],
+      "bullets": [],
+      "summary": null
+    },
+    {
+      "id": "data_obs",
+      "url": "https://docs.datadoghq.com/data_observability/",
+      "ok": true,
+      "status": 200,
+      "title": "Data Observability Overview",
+      "h1": "Data Observability Overview",
+      "headings": [
+        "Overview",
+        "Key capabilities",
+        "Get started",
+        "Further reading",
+        "Can't find something?",
+        "How can I help you today?"
+      ],
+      "bullets": [],
+      "summary": null
+    },
+    {
+      "id": "logs",
+      "url": "https://docs.datadoghq.com/logs/",
+      "ok": true,
+      "status": 200,
+      "title": "Log Management",
+      "h1": "Log Management",
+      "headings": [
+        "Overview",
+        "Collect",
+        "Configure",
+        "Connect",
+        "Explore",
+        "Further Reading",
+        "Can't find something?",
+        "How can I help you today?"
+      ],
+      "bullets": [],
+      "summary": null
+    },
+    {
+      "id": "sds",
+      "url": "https://docs.datadoghq.com/sensitive_data_scanner/",
+      "ok": true,
+      "status": 200,
+      "title": "Sensitive Data Scanner",
+      "h1": "Sensitive Data Scanner",
+      "headings": [
+        "Overview",
+        "Supported data sources",
+        "Telemetry data",
+        "Agent Observability",
+        "Cloud storage",
+        "Code repositories",
+        "Key capabilities",
+        "Investigate sensitive data findings",
+        "Create alerts for sensitive data",
+        "Review sensitive data trends",
+        "Further reading",
+        "Can't find something?",
+        "How can I help you today?"
+      ],
+      "bullets": [],
+      "summary": null
+    },
+    {
+      "id": "obs_pipelines",
+      "url": "https://docs.datadoghq.com/observability_pipelines/",
+      "ok": true,
+      "status": 200,
+      "title": "Observability Pipelines",
+      "h1": "Observability Pipelines",
+      "headings": [
+        "Overview",
+        "Key components",
+        "Observability Pipelines Worker",
+        "Observability Pipelines UI",
+        "Get started",
+        "Common use cases and templates",
+        "Templates",
+        "Further Reading",
+        "Can't find something?",
+        "How can I help you today?"
+      ],
+      "bullets": [],
+      "summary": null
+    },
+    {
+      "id": "error_tracking",
+      "url": "https://docs.datadoghq.com/error_tracking/",
+      "ok": true,
+      "status": 200,
+      "title": "Error Tracking",
+      "h1": "Error Tracking",
+      "headings": [
+        "Overview",
+        "For developers",
+        "Getting started",
+        "Setup",
+        "Supported error sources",
+        "Further reading",
+        "Can't find something?",
+        "How can I help you today?"
+      ],
+      "bullets": [],
+      "summary": null
+    }
+  ]
+}

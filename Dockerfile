@@ -21,8 +21,7 @@ WORKDIR /app
 COPY --from=builder /app/target/release/thine-server /usr/local/bin/thine-server
 COPY --from=ui /ui/dist /app/ui/dist
 ENV THINE_HOST=0.0.0.0 \
-    THINE_PORT=4318 \
     THINE_UI_DIR=/app/ui/dist \
     THINE_SEED_DEMO=true
-EXPOSE 4318
+EXPOSE 8080
 CMD ["thine-server"]

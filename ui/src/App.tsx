@@ -21,9 +21,21 @@ import {
   type MetricMeta,
   type MetricSummaryRow,
   type QueryResult,
-  type RenderedBoard,
 } from "./api";
-import { fmt, Sparkline, WidgetCard } from "./widgets";
+import { BitsPage } from "./BitsPage";
+import { ComparePage } from "./Compare";
+import { DashboardsPage, type DashNavAction } from "./Dashboards";
+import { DocsPage } from "./Docs";
+import { FleetPage } from "./Fleet";
+import { GetStartedPage } from "./GetStarted";
+import { IntegrationsPage } from "./Integrations";
+import { MetricsCorrelationsPage } from "./MetricsCorrelations";
+import { MonitorsPage } from "./Monitors";
+import { NotebooksPage } from "./Notebooks";
+import { ObservabilityPage } from "./Observability";
+import { SideNav, type AppPage, type ObsDeepLink } from "./SideNav";
+import { ThemeToggle, chartTip } from "./theme";
+import { fmt, Sparkline } from "./widgets";
 import "./App.css";
 
 const SERIES_COLORS = ["#5B91EB", "#A371E3", "#FF6B6B", "#F4A261", "#2EC4B6", "#E9C46A", "#F77FBE", "#4CC9F0"];
@@ -34,9 +46,73 @@ const TIME_RANGES = [
   { id: "1d", label: "Past 1 Day", ms: 24 * 60 * 60_000 },
 ] as const;
 
-type Page = "explorer" | "summary" | "dashboards" | "monitors";
+type Page = AppPage;
 type Viz = "line" | "area" | "bars";
 type LayoutMode = "timeseries" | "split";
+
+/** Deep-link map for left-nav + Observability tabs — Datadog-style `#route` URLs. */
+const HASH_ROUTES: Record<string, { page: Page; obsTab?: ObsDeepLink }> = {
+  "get-started": { page: "get-started" },
+  dashboards: { page: "dashboards" },
+  monitors: { page: "monitors" },
+  explorer: { page: "explorer" },
+  summary: { page: "summary" },
+  correlations: { page: "correlations" },
+  notebooks: { page: "notebooks" },
+  integrations: { page: "integrations" },
+  compare: { page: "compare" },
+  fleet: { page: "fleet" },
+  bits: { page: "bits" },
+  docs: { page: "docs" },
+  watchdog: { page: "observability", obsTab: "ha" },
+  "ha-watchdog": { page: "observability", obsTab: "ha-watchdog" },
+  events: { page: "observability", obsTab: "events" },
+  apm: { page: "observability", obsTab: "apm" },
+  "apm-traces": { page: "observability", obsTab: "apm-traces" },
+  "apm-map": { page: "observability", obsTab: "apm-map" },
+  "apm-catalog": { page: "observability", obsTab: "apm-catalog" },
+  logs: { page: "observability", obsTab: "logs" },
+  "logs-live": { page: "observability", obsTab: "logs-live" },
+  "logs-errors": { page: "observability", obsTab: "logs-errors" },
+  "logs-sds": { page: "observability", obsTab: "logs-sds" },
+  "logs-patterns": { page: "observability", obsTab: "logs-patterns" },
+  usm: { page: "observability", obsTab: "usm" },
+  security: { page: "observability", obsTab: "usm" },
+  ai: { page: "observability", obsTab: "ai" },
+  ux: { page: "observability", obsTab: "ux" },
+  infra: { page: "observability", obsTab: "infra" },
+  hostmap: { page: "observability", obsTab: "hostmap" },
+  containers: { page: "observability", obsTab: "containers" },
+  "container-map": { page: "observability", obsTab: "container-map" },
+  "infra-envs": { page: "observability", obsTab: "infra-envs" },
+  "infra-k8s": { page: "observability", obsTab: "infra-k8s" },
+  processes: { page: "observability", obsTab: "processes" },
+  serverless: { page: "observability", obsTab: "serverless" },
+  gpu: { page: "observability", obsTab: "gpu" },
+  dbm: { page: "observability", obsTab: "dbm" },
+  cloudcraft: { page: "observability", obsTab: "cloudcraft" },
+  slos: { page: "observability", obsTab: "slos" },
+  data: { page: "observability", obsTab: "data" },
+  cost: { page: "observability", obsTab: "cost" },
+  ha: { page: "observability", obsTab: "ha" },
+  observability: { page: "observability", obsTab: "overview" },
+  overview: { page: "observability", obsTab: "overview" },
+};
+
+function hashFor(page: Page, obsTab: ObsDeepLink | null): string {
+  if (page === "observability" && obsTab) return `#${obsTab}`;
+  if (page === "observability") return "#overview";
+  return `#${page}`;
+}
+
+function parseHash(): { page: Page; obsTab: ObsDeepLink | null } | null {
+  const raw = (typeof window !== "undefined" ? window.location.hash : "").replace(/^#/, "").trim();
+  if (!raw) return null;
+  const key = raw.split("?")[0].split("/")[0];
+  const hit = HASH_ROUTES[key];
+  if (!hit) return null;
+  return { page: hit.page, obsTab: hit.obsTab ?? null };
+}
 
 function tagStr(tags: Record<string, string>) {
   const pairs = Object.entries(tags).filter(([k]) => !k.startsWith("telemetry."));
@@ -58,26 +134,57 @@ function timeLabel(ms: number, rangeMs: number) {
   return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });
 }
 
-const tip = {
-  background: "#1C2333",
-  border: "1px solid rgba(255,255,255,0.1)",
-  borderRadius: 6,
-  color: "#E8EDF5",
-  fontSize: 12,
-};
+const tip = chartTip;
 
 export default function App() {
-  const [page, setPage] = useState<Page>("dashboards");
+  const initialRoute = parseHash();
+  const [page, setPageState] = useState<Page>(initialRoute?.page ?? "get-started");
   const [connected, setConnected] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [dash, setDash] = useState<Dashboard | null>(null);
   const [metrics, setMetrics] = useState<MetricMeta[]>([]);
   const [alerts, setAlerts] = useState<AlertRule[]>([]);
   const [boards, setBoards] = useState<BoardMeta[]>([]);
-  const [rendered, setRendered] = useState<RenderedBoard | null>(null);
   const [activeBoardId, setActiveBoardId] = useState<string | null>(null);
   const [summaryRows, setSummaryRows] = useState<MetricSummaryRow[]>([]);
-  const [envFilter, setEnvFilter] = useState("prod");
+  const [obsTab, setObsTabState] = useState<ObsDeepLink | null>(initialRoute?.obsTab ?? "overview");
+  const [bitsPrompt, setBitsPrompt] = useState<string | null>(null);
+  const [notebookFocusId, setNotebookFocusId] = useState<string | null>(null);
+  const [dashNavAction, setDashNavAction] = useState<DashNavAction | null>(null);
+  const [dashNavSeq, setDashNavSeq] = useState(0);
+  const [activeDashListId, setActiveDashListId] = useState<string | null>(null);
+  const [alertEvents, setAlertEvents] = useState<import("./api").AlertEvent[]>([]);
+
+  const setPage = useCallback((p: Page) => {
+    setPageState(p);
+    if (p !== "observability") {
+      const next = hashFor(p, null);
+      if (window.location.hash !== next) window.location.hash = next;
+    }
+  }, []);
+  const setObsTab = useCallback((tab: ObsDeepLink) => {
+    setObsTabState(tab);
+    setPageState("observability");
+    const next = hashFor("observability", tab);
+    if (window.location.hash !== next) window.location.hash = next;
+  }, []);
+
+  useEffect(() => {
+    const apply = () => {
+      const r = parseHash();
+      if (!r) return;
+      setPageState(r.page);
+      if (r.obsTab) setObsTabState(r.obsTab);
+    };
+    window.addEventListener("hashchange", apply);
+    return () => window.removeEventListener("hashchange", apply);
+  }, []);
+
+  const handleDashAction = useCallback((action: DashNavAction) => {
+    setPage("dashboards");
+    setDashNavAction(action);
+    setDashNavSeq((n) => n + 1);
+  }, [setPage]);
 
   const [metric, setMetric] = useState("http.server.duration");
   const [agg, setAgg] = useState("avg");
@@ -90,7 +197,6 @@ export default function App() {
   const [series, setSeries] = useState<QueryResult[]>([]);
   const [metricSearch, setMetricSearch] = useState("");
   const [summarySearch, setSummarySearch] = useState("");
-  const [monitorPreview, setMonitorPreview] = useState<QueryResult[]>([]);
 
   const range = TIME_RANGES.find((t) => t.id === rangeId) ?? TIME_RANGES[1];
   const uniqueMetrics = useMemo(() => Array.from(new Set(metrics.map((m) => m.name))).sort(), [metrics]);
@@ -116,17 +222,6 @@ export default function App() {
       setError(e instanceof Error ? e.message : "Connection failed");
     }
   }, [activeBoardId]);
-
-  const refreshBoard = useCallback(async () => {
-    if (!activeBoardId) return;
-    try {
-      const board = await api.renderBoard(activeBoardId, range.ms, `env:${envFilter}`);
-      setRendered(board);
-      setConnected(true);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Board render failed");
-    }
-  }, [activeBoardId, range.ms, envFilter]);
 
   const refreshSummary = useCallback(async () => {
     try {
@@ -165,16 +260,6 @@ export default function App() {
   }, [refreshMeta]);
 
   useEffect(() => {
-    if (page === "dashboards") {
-      refreshBoard();
-      if (!paused) {
-        const id = setInterval(refreshBoard, 8000);
-        return () => clearInterval(id);
-      }
-    }
-  }, [page, refreshBoard, paused]);
-
-  useEffect(() => {
     if (page === "summary") {
       refreshSummary();
       if (!paused) {
@@ -196,20 +281,8 @@ export default function App() {
 
   useEffect(() => {
     if (page !== "monitors") return;
-    const end = Date.now();
-    api
-      .query({
-        metric,
-        tags: `env:${envFilter}`,
-        aggregation: "avg",
-        start_ms: end - range.ms,
-        end_ms: end,
-        step_ms: stepForRange(range.ms),
-        group_by: "service",
-      })
-      .then((r) => setMonitorPreview(r.filter((s) => s.points.length)))
-      .catch(() => setMonitorPreview([]));
-  }, [page, metric, envFilter, range.ms]);
+    api.alertEvents().then(setAlertEvents).catch(() => setAlertEvents([]));
+  }, [page]);
 
   const keys = series.map((s, i) => tagStr(s.tags) || `s${i}`);
   const chartData = useMemo(() => {
@@ -230,79 +303,117 @@ export default function App() {
   const queryPreview = `${agg}:${metric}{${fromTags.trim() || "*"}}${groupBy ? ` by {${groupBy}}` : ""}`;
 
   return (
-    <div className="dd">
-      <aside className="dd-nav">
-        <div className="dd-logo">
-          <span className="dd-mark">T</span>
-          <div>
-            <strong>Thine</strong>
-            <small>Metrics</small>
-          </div>
-        </div>
-        <nav>
-          {(
-            [
-              ["dashboards", "Dashboards"],
-              ["explorer", "Metrics Explorer"],
-              ["summary", "Metrics Summary"],
-              ["monitors", "Monitors"],
-            ] as const
-          ).map(([id, label]) => (
-            <button key={id} className={page === id ? "active" : ""} onClick={() => setPage(id)}>
-              {label}
-            </button>
-          ))}
-        </nav>
-        <div className="dd-nav-foot">
-          <span className={`dot ${connected ? "ok" : "bad"}`} />
-          {connected ? "Connected" : "Disconnected"}
-          <small>{dash ? `${dash.series_count} series · ${fmt(dash.ingest_rate_per_sec, 1)}/s` : "—"}</small>
-        </div>
-      </aside>
+    <div className={`dd${page === "dashboards" || page === "observability" || page === "explorer" || page === "summary" || page === "correlations" || page === "monitors" || page === "compare" || page === "get-started" || page === "fleet" || page === "bits" ? " dd-has-subnav" : ""}`}>
+      <SideNav
+        page={page}
+        connected={connected}
+        seriesLabel={dash ? `${dash.series_count} series · ${fmt(dash.ingest_rate_per_sec, 1)}/s` : "—"}
+        boardCount={boards.length}
+        onPage={setPage}
+        obsTab={obsTab}
+        onObsTab={setObsTab}
+        onDashAction={handleDashAction}
+        onBitsPrompt={(prompt) => {
+          setBitsPrompt(prompt);
+          setPage("bits");
+        }}
+        activeDashListId={activeDashListId}
+      />
 
       <div className="dd-main">
         <header className="dd-top">
           <div>
             <h1>
-              {page === "dashboards" && (rendered?.name || "Dashboards")}
+              {page === "get-started" && "Welcome"}
+              {page === "fleet" && "Fleet Automation"}
+              {page === "bits" && "Bits AI"}
+              {page === "dashboards" && "Dashboards"}
+              {page === "observability" &&
+                (obsTab === "hostmap"
+                  ? "Host Map"
+                  : obsTab === "containers"
+                    ? "Containers Explorer"
+                    : obsTab === "infra-envs"
+                      ? "Environments"
+                      : obsTab === "infra-k8s"
+                        ? "Kubernetes utilization"
+                        : obsTab === "processes"
+                          ? "Live Processes"
+                          : obsTab === "serverless"
+                            ? "Serverless"
+                            : obsTab === "infra"
+                              ? "Infrastructure"
+                              : "Observability")}
+              {page === "compare" && "Compare"}
+              {page === "integrations" && "Integrations"}
+              {page === "notebooks" && "Notebooks"}
               {page === "explorer" && "Metrics Explorer"}
               {page === "summary" && "Metrics Summary"}
+              {page === "correlations" && "Metric Correlations"}
               {page === "monitors" && "Monitors"}
+              {page === "docs" && "Docs"}
             </h1>
             <p className="dd-sub">
+              {page === "get-started" &&
+                "Install your first agent, then build dashboards and monitors — Datadog tutorial path"}
+              {page === "fleet" &&
+                "View, install, configure, and upgrade agents across hosts and container platforms"}
+              {page === "bits" &&
+                "Agentic tutorial runner — install agents, Golden Signals boards, monitors with recovery"}
               {page === "dashboards" &&
-                (rendered?.description || "Grid of query values, timeseries, and toplists")}
+                "Datadog-parity boards — layouts, template variables, widgets, functions, overlays, sharing"}
+              {page === "observability" &&
+                (obsTab === "hostmap"
+                  ? "Honeycomb host map — filter, group, fill by CPU, size by metric"
+                  : obsTab === "containers"
+                    ? "Real-time containers — facets, Boolean search, RSS/CPU vs limits, live logs"
+                    : obsTab === "infra-envs"
+                      ? "Unified env/service/version tagging across hosts and containers"
+                      : obsTab === "infra-k8s"
+                        ? "Kubernetes CPU/memory usage vs requests and limits"
+                        : obsTab === "processes"
+                          ? "Real-time process CPU/RSS — faceted search, scatter by command group"
+                          : obsTab === "serverless"
+                            ? "Lambda, Azure App Service, Cloud Run — cold starts, cost, enhanced metrics"
+                            : obsTab === "infra"
+                              ? "Host Map, Containers Explorer, environments, and K8s utilization"
+                              : "Traces, service map, DBM, AI evals, Bits RCA — unified beyond Datadog + LangSmith silos")}
+              {page === "compare" &&
+                "Thine vs SigNoz, Grafana, Datadog, New Relic, CloudWatch, ClickStack, Dash0"}
+              {page === "integrations" &&
+                "Catalog, marketplace, SLOs, incidents, DORA — wired to live platform APIs"}
+              {page === "notebooks" &&
+                "Executable RCA notebooks — metric cells hit the live query engine"}
               {page === "explorer" && "Graph, filter, and split metrics — Datadog-style explorer"}
               {page === "summary" && "Granular metric stats with sparklines (min / avg / max / last)"}
-              {page === "monitors" && "Threshold monitors with live metric preview"}
+              {page === "correlations" && "Find metrics with irregular behavior in the same window — Graph Insights parity"}
+              {page === "monitors" &&
+                "Metric threshold wizard — recovery threshold, severity routing, notifications"}
+              {page === "docs" && "How to use each feature against the live Thine API"}
             </p>
           </div>
           <div className="dd-top-actions">
-            {page === "dashboards" && (
-              <>
-                <select value={activeBoardId ?? ""} onChange={(e) => setActiveBoardId(e.target.value)}>
-                  {boards.map((b) => (
-                    <option key={b.id} value={b.id}>
-                      {b.name}
-                    </option>
-                  ))}
-                </select>
-                <select value={envFilter} onChange={(e) => setEnvFilter(e.target.value)}>
-                  <option value="prod">env:prod</option>
-                  <option value="staging">env:staging</option>
-                </select>
-              </>
-            )}
-            <select value={rangeId} onChange={(e) => setRangeId(e.target.value as typeof rangeId)}>
-              {TIME_RANGES.map((t) => (
-                <option key={t.id} value={t.id}>
-                  {t.label}
-                </option>
-              ))}
-            </select>
-            <button className={paused ? "ghost on" : "ghost"} onClick={() => setPaused((p) => !p)}>
-              {paused ? "Paused" : "Live"}
+            <ThemeToggle />
+            <button type="button" className="ghost" onClick={() => setPage("get-started")}>
+              Get Started
             </button>
+            <button type="button" className="ghost" onClick={() => setPage("bits")}>
+              Bits AI
+            </button>
+            {page !== "docs" && page !== "observability" && page !== "compare" && page !== "get-started" && page !== "fleet" && page !== "bits" && (
+              <select value={rangeId} onChange={(e) => setRangeId(e.target.value as typeof rangeId)}>
+                {TIME_RANGES.map((t) => (
+                  <option key={t.id} value={t.id}>
+                    {t.label}
+                  </option>
+                ))}
+              </select>
+            )}
+            {page !== "docs" && page !== "compare" && page !== "get-started" && (
+              <button className={paused ? "ghost on" : "ghost"} onClick={() => setPaused((p) => !p)}>
+                {paused ? "Paused" : "Live"}
+              </button>
+            )}
           </div>
         </header>
 
@@ -311,26 +422,74 @@ export default function App() {
             <strong>Connection failed</strong>
             <span>{error}</span>
             <code>./scripts/dev.sh</code>
-            <button onClick={() => { refreshMeta(); refreshBoard(); refreshQuery(); }}>Retry</button>
+            <button onClick={() => { refreshMeta(); refreshQuery(); }}>Retry</button>
           </div>
         )}
 
+        {page === "observability" && <ObservabilityPage initialTab={obsTab ?? "overview"} />}
+        {page === "compare" && <ComparePage />}
+        {page === "integrations" && <IntegrationsPage />}
+        {page === "notebooks" && <NotebooksPage initialNotebookId={notebookFocusId} />}
+        {page === "docs" && <DocsPage />}
+        {page === "get-started" && (
+          <GetStartedPage
+            onInstallAgent={() => setPage("fleet")}
+            onOpenDashboards={() => {
+              setPage("dashboards");
+              handleDashAction({ type: "open-list", preset: "all" });
+            }}
+          />
+        )}
+        {page === "fleet" && <FleetPage initialTab="install" />}
+        {page === "bits" && (
+          <BitsPage
+            initialPrompt={bitsPrompt}
+            onBoardsChanged={() => {
+              void refreshMeta();
+            }}
+            onNavigate={(target) => {
+              if (target.page === "dashboards") {
+                if (target.boardId) setActiveBoardId(target.boardId);
+                setPage("dashboards");
+                handleDashAction({ type: "open-board" });
+                void refreshMeta();
+              } else if (target.page === "fleet") {
+                setPage("fleet");
+              } else if (target.page === "monitors") {
+                setPage("monitors");
+                void refreshMeta();
+              } else if (target.page === "get-started") {
+                setPage("get-started");
+              } else if (target.page === "observability") {
+                setPage("observability");
+              } else if (target.page === "notebooks") {
+                setNotebookFocusId(target.notebookId ?? null);
+                setPage("notebooks");
+              }
+            }}
+          />
+        )}
+
         {page === "dashboards" && (
-          <section className="dd-panel dash-panel">
-            <div className="dd-filter-bar">
-              <span>Filter by:</span>
-              <code>env:{envFilter}</code>
-              <span className="muted">
-                {rendered ? `${rendered.widgets.length} widgets · refreshed live` : "Loading…"}
-              </span>
-            </div>
-            <div className="dash-grid">
-              {rendered?.widgets.map((w) => (
-                <WidgetCard key={w.id} w={w} />
-              ))}
-              {!rendered && <div className="dd-empty">Loading dashboard…</div>}
-            </div>
-          </section>
+          <DashboardsPage
+            boards={boards}
+            activeBoardId={activeBoardId}
+            onSelectBoard={setActiveBoardId}
+            onBoardsChanged={() => { void refreshMeta(); }}
+            rangeMs={range.ms}
+            paused={paused}
+            navAction={dashNavAction}
+            navActionSeq={dashNavSeq}
+            onActiveListChange={setActiveDashListId}
+          />
+        )}
+
+        {page === "correlations" && (
+          <MetricsCorrelationsPage
+            metrics={uniqueMetrics}
+            rangeMs={range.ms}
+            initialMetric={metric}
+          />
         )}
 
         {page === "summary" && (
@@ -387,109 +546,18 @@ export default function App() {
         )}
 
         {page === "monitors" && (
-          <section className="dd-panel">
-            <div className="monitor-layout">
-              <div className="dd-monitor-form">
-                <h3>New monitor</h3>
-                <p>
-                  Alert when <code>{metric}</code> window average exceeds threshold
-                </p>
-                <MonitorCreate
-                  metric={metric}
-                  metrics={uniqueMetrics}
-                  onMetric={setMetric}
-                  onCreate={async (name, threshold) => {
-                    await api.createAlert({
-                      name,
-                      metric,
-                      threshold,
-                      comparator: "gt",
-                      window_ms: 60_000,
-                      tags: { env: envFilter },
-                    });
-                    await refreshMeta();
-                  }}
-                />
-              </div>
-              <div className="dw timeseries monitor-preview">
-                <div className="dw-title">
-                  Preview · {metric}
-                  <span>threshold monitor context</span>
-                </div>
-                <div className="dw-chart">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <LineChart
-                      data={(() => {
-                        const map = new Map<number, Record<string, number | string>>();
-                        monitorPreview.forEach((s, i) => {
-                          const key = tagStr(s.tags) || `s${i}`;
-                          s.points.forEach((p) => {
-                            const row = map.get(p.timestamp_ms) ?? {
-                              t: p.timestamp_ms,
-                              label: timeLabel(p.timestamp_ms, range.ms),
-                            };
-                            row[key] = p.value;
-                            map.set(p.timestamp_ms, row);
-                          });
-                        });
-                        return Array.from(map.values()).sort((a, b) => Number(a.t) - Number(b.t));
-                      })()}
-                      margin={{ top: 8, right: 8, left: 0, bottom: 0 }}
-                    >
-                      <CartesianGrid stroke="rgba(255,255,255,0.06)" vertical={false} />
-                      <XAxis dataKey="label" tick={{ fill: "#8B97A8", fontSize: 10 }} minTickGap={28} />
-                      <YAxis tick={{ fill: "#8B97A8", fontSize: 10 }} width={42} />
-                      <Tooltip contentStyle={tip} />
-                      {monitorPreview.map((s, i) => (
-                        <Line
-                          key={tagStr(s.tags) || i}
-                          type="monotone"
-                          dataKey={tagStr(s.tags) || `s${i}`}
-                          stroke={SERIES_COLORS[i % SERIES_COLORS.length]}
-                          strokeWidth={2}
-                          dot={false}
-                          isAnimationActive={false}
-                        />
-                      ))}
-                    </LineChart>
-                  </ResponsiveContainer>
-                </div>
-              </div>
-            </div>
-            <table className="dd-table">
-              <thead>
-                <tr>
-                  <th>Name</th>
-                  <th>Metric</th>
-                  <th>Condition</th>
-                  <th>Window</th>
-                  <th>Status</th>
-                </tr>
-              </thead>
-              <tbody>
-                {alerts.map((a) => (
-                  <tr key={a.id}>
-                    <td>{a.name}</td>
-                    <td>
-                      <code>{a.metric}</code>
-                    </td>
-                    <td>
-                      {a.comparator} {a.threshold}
-                    </td>
-                    <td>{a.window_ms / 1000}s</td>
-                    <td>{a.enabled ? "Enabled" : "Muted"}</td>
-                  </tr>
-                ))}
-                {!alerts.length && (
-                  <tr>
-                    <td colSpan={5} className="tags">
-                      No monitors yet
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
-          </section>
+          <MonitorsPage
+            metrics={uniqueMetrics}
+            metric={metric}
+            onMetric={setMetric}
+            alerts={alerts}
+            alertEvents={alertEvents}
+            rangeMs={range.ms}
+            onCreated={() => {
+              void refreshMeta();
+              api.alertEvents().then(setAlertEvents).catch(() => setAlertEvents([]));
+            }}
+          />
         )}
 
         {page === "explorer" && (
@@ -682,31 +750,3 @@ export default function App() {
   );
 }
 
-function MonitorCreate({
-  metric,
-  metrics,
-  onMetric,
-  onCreate,
-}: {
-  metric: string;
-  metrics: string[];
-  onMetric: (m: string) => void;
-  onCreate: (name: string, threshold: number) => Promise<void>;
-}) {
-  const [name, setName] = useState("High latency");
-  const [threshold, setThreshold] = useState("120");
-  return (
-    <div className="row">
-      <select value={metric} onChange={(e) => onMetric(e.target.value)}>
-        {metrics.map((m) => (
-          <option key={m} value={m}>
-            {m}
-          </option>
-        ))}
-      </select>
-      <input value={name} onChange={(e) => setName(e.target.value)} />
-      <input value={threshold} onChange={(e) => setThreshold(e.target.value)} />
-      <button onClick={() => onCreate(name, Number(threshold))}>Create Monitor</button>
-    </div>
-  );
-}
